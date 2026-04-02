@@ -10,7 +10,15 @@ def _engine_url(url: str) -> str:
     return url
 
 
-engine = create_engine(_engine_url(settings.database_url), pool_pre_ping=True)
+def _create_engine():
+    url = _engine_url(settings.database_url)
+    kwargs: dict = {"pool_pre_ping": True}
+    if url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+    return create_engine(url, **kwargs)
+
+
+engine = _create_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
