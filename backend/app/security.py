@@ -8,13 +8,17 @@ from app.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# bcrypt only accepts the first 72 bytes; passlib raises otherwise
+def _bcrypt_plain(plain: str) -> str:
+    return plain.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return pwd_context.verify(_bcrypt_plain(plain), hashed)
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return pwd_context.hash(_bcrypt_plain(plain))
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

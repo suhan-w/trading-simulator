@@ -6,20 +6,30 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [guestError, setGuestError] = useState(null);
 
   const refresh = useCallback(async () => {
-    const t = getToken();
-    if (!t) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
+    setGuestError(null);
+    setLoading(true);
     try {
-      const u = await api.me();
-      setUser(u);
-    } catch {
+      if (!getToken()) {
+        const { access_token } = await api.guest();
+        setToken(access_token);
+      }
+      try {
+        const u = await api.me();
+        setUser(u);
+      } catch {
+        setToken(null);
+        const { access_token } = await api.guest();
+        setToken(access_token);
+        const u = await api.me();
+        setUser(u);
+      }
+    } catch (e) {
       setUser(null);
       setToken(null);
+      setGuestError(e?.message || "Could not start session");
     } finally {
       setLoading(false);
     }
@@ -37,27 +47,16 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("auth:logout", onLogout);
   }, []);
 
-  const login = async (email, password) => {
-    const { access_token } = await api.login(email, password);
-    setToken(access_token);
-    const u = await api.me();
-    setUser(u);
-    return u;
-  };
-
-  const register = async (email, password) => {
-    await api.register(email, password);
-    return login(email, password);
-  };
-
-  const logout = () => {
+  const logout = useCallback(async () => {
     setToken(null);
     setUser(null);
+    setGuestError(null);
     api.logout().catch(() => {});
-  };
+    await refresh();
+  }, [refresh]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, guestError, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

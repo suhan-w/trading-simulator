@@ -30,19 +30,19 @@ export default function Layout() {
               Leaderboard
             </NavLink>
           </nav>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-3 text-sm flex-wrap justify-end">
             {user && (
               <>
-                <span className="text-slate-400 hidden sm:inline">{user.email}</span>
+                <span className="text-slate-400 hidden sm:inline">Guest</span>
                 <span className="font-mono text-accent">
                   ${user.cash_balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} cash
                 </span>
                 <button
                   type="button"
-                  onClick={logout}
+                  onClick={() => void logout()}
                   className="px-3 py-1.5 rounded-lg bg-surface-700 hover:bg-surface-600 text-slate-200"
                 >
-                  Log out
+                  New session
                 </button>
               </>
             )}
@@ -53,7 +53,7 @@ export default function Layout() {
         <Outlet />
       </main>
       <footer className="border-t border-surface-700 py-6 text-center text-slate-500 text-sm">
-        Virtual trading — prices from Yahoo Finance. Not financial advice.
+        Virtual trading — guest mode, prices from Yahoo Finance. Not financial advice.
       </footer>
     </div>
   );

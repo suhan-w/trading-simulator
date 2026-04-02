@@ -59,13 +59,13 @@ Prerequisites: **Docker** and **Docker Compose**.
 
 4. Open the app:
 
-   - **Frontend**: [http://localhost](http://localhost) (port 80)
+   - **Frontend**: [http://localhost:8080](http://localhost:8080) (nginx maps host **8080** → container 80 so it does not clash with macOS services using port 80)
    - **API docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
    - **Health**: [http://localhost:8000/health](http://localhost:8000/health)
 
-The browser calls the API at `http://localhost:8000` (configured at **build time** for the frontend via `VITE_API_URL`).
+The UI calls **`/api` on the same host**; nginx proxies that to the API container (see `frontend/nginx.conf`).
 
-5. Register an account and start trading.
+5. The app runs in **guest mode** (no registration). Wait until logs show the API is healthy, then load the page.
 
 To stop:
 

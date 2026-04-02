@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class UserCreate(BaseModel):
@@ -20,13 +20,22 @@ class Token(BaseModel):
 
 
 class UserOut(BaseModel):
+    """API user shape. `is_guest` is derived from email (computed_field breaks ORM→JSON in some cases)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: str
     cash_balance: float
     created_at: datetime
+    is_guest: bool = False
 
-    class Config:
-        from_attributes = True
+    @model_validator(mode="after")
+    def _derive_is_guest(self):
+        g = self.email.endswith("@guest.local")
+        if self.is_guest != g:
+            return self.model_copy(update={"is_guest": g})
+        return self
 
 
 class OrderCreate(BaseModel):

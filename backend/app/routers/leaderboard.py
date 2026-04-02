@@ -27,11 +27,12 @@ def leaderboard(
     rows.sort(key=lambda x: x[2], reverse=True)
     out: list[LeaderboardEntry] = []
     for rank, (u, eq, pct) in enumerate(rows, start=1):
+        label = f"Guest #{u.id}" if u.email.endswith("@guest.local") else u.email
         out.append(
             LeaderboardEntry(
                 rank=rank,
                 user_id=u.id,
-                email=u.email,
+                email=label,
                 total_equity=eq,
                 gain_loss_pct=pct,
             )

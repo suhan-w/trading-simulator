@@ -16,6 +16,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Trading Strategy Simulator API", lifespan=lifespan)
 
+# Browser dev servers on localhost / LAN; regex covers any port (Vite, etc.)
+_local_origin_regex = (
+    r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -24,7 +29,10 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:80",
         "http://localhost",
+        "http://127.0.0.1",
+        "http://127.0.0.1:80",
     ],
+    allow_origin_regex=_local_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

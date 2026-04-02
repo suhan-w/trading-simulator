@@ -7,7 +7,8 @@ RUN npm ci 2>/dev/null || npm install
 
 COPY . .
 
-ARG VITE_API_URL=http://localhost:8000
+# Optional: --build-arg VITE_API_URL=https://api.example.com (omit for same-origin /api behind nginx)
+ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
 RUN npm run build

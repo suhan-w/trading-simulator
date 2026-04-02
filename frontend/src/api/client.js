@@ -1,4 +1,15 @@
-const base = import.meta.env.VITE_API_URL || "http://localhost:8000";
+/**
+ * Default: same-origin `/api` (Vite dev proxy, or nginx → FastAPI in Docker).
+ * Set VITE_API_URL only if the API is on another origin (e.g. https://api.example.com).
+ */
+function apiBase() {
+  const v = import.meta.env.VITE_API_URL;
+  if (v !== undefined && v !== null && String(v).trim() !== "") {
+    return String(v).replace(/\/$/, "");
+  }
+  return "";
+}
+const base = apiBase();
 
 export function getToken() {
   return localStorage.getItem("token");
@@ -17,7 +28,16 @@ async function request(path, options = {}) {
     headers["Content-Type"] = "application/json";
     options.body = JSON.stringify(options.body);
   }
-  const res = await fetch(`${base}${path}`, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(`${base}${path}`, { ...options, headers });
+  } catch (e) {
+    const msg =
+      e instanceof TypeError
+        ? "Cannot reach the API. Start the backend on port 8000 (e.g. uvicorn), or set VITE_API_URL if the API runs elsewhere."
+        : String(e);
+    throw new Error(msg);
+  }
   if (res.status === 401 && getToken()) {
     setToken(null);
     window.dispatchEvent(new Event("auth:logout"));
@@ -30,17 +50,20 @@ async function request(path, options = {}) {
     data = text;
   }
   if (!res.ok) {
-    const msg = data?.detail || data?.message || res.statusText;
+    let msg = data?.detail || data?.message || res.statusText;
+    if (res.status === 404 && String(path).startsWith("/api")) {
+      msg =
+        typeof msg === "string" && msg === "Not Found"
+          ? "API not found. Use the Vite dev server with the backend running, Docker Compose (nginx proxies /api), or set VITE_API_URL to your FastAPI base URL."
+          : msg;
+    }
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
   return data;
 }
 
 export const api = {
-  register: (email, password) =>
-    request("/api/auth/register", { method: "POST", body: { email, password } }),
-  login: (email, password) =>
-    request("/api/auth/login", { method: "POST", body: { email, password } }),
+  guest: () => request("/api/auth/guest", { method: "POST" }),
   me: () => request("/api/auth/me"),
   logout: () => request("/api/auth/logout", { method: "POST" }),
 
