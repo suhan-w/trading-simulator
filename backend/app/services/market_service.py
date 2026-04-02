@@ -1,10 +1,47 @@
+from datetime import datetime, time
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import yfinance as yf
 
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
+ASX_HOURS_NOTE = (
+    "ASX regular session: Monday to Friday, 10:00am–4:00pm Sydney time (Australia/Sydney)."
+)
+
 
 def normalize_ticker(ticker: str) -> str:
-    return ticker.strip().upper()
+    """ASX symbols on Yahoo Finance use a .AX suffix (e.g. BHP.AX, CBA.AX)."""
+    t = ticker.strip().upper()
+    if not t:
+        return t
+    if t.endswith(".AX"):
+        return t
+    if "." in t:
+        return t
+    return f"{t}.AX"
+
+
+def asx_regular_session_open(at: datetime | None = None) -> bool:
+    """True during ASX cash session weekdays 10:00–16:00 Sydney (half-open end)."""
+    now = at or datetime.now(SYDNEY_TZ)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=SYDNEY_TZ)
+    else:
+        now = now.astimezone(SYDNEY_TZ)
+    if now.weekday() >= 5:
+        return False
+    hm = now.time()
+    return time(10, 0) <= hm < time(16, 0)
+
+
+def asx_session_payload() -> dict[str, Any]:
+    now = datetime.now(SYDNEY_TZ)
+    return {
+        "open": asx_regular_session_open(now),
+        "hours_note": ASX_HOURS_NOTE,
+        "sydney_time": now.isoformat(),
+    }
 
 
 def get_quote(ticker: str) -> dict[str, Any]:
@@ -21,13 +58,21 @@ def get_quote(ticker: str) -> dict[str, Any]:
     if price is None:
         raise ValueError(f"Could not fetch price for {t}")
     name = info.get("shortName") or info.get("longName")
-    currency = info.get("currency") or "USD"
+    currency = info.get("currency") or "AUD"
     return {
         "ticker": t,
         "price": float(price),
         "name": name,
         "currency": currency,
     }
+
+
+def _is_asx_listing(item: dict) -> bool:
+    sym = str(item.get("symbol") or "").upper()
+    if sym.endswith(".AX"):
+        return True
+    ex = str(item.get("exchange") or "").upper()
+    return ex in ("ASX", "CXA")
 
 
 def search_symbols(query: str, limit: int = 15) -> list[dict[str, Optional[str]]]:
@@ -38,15 +83,20 @@ def search_symbols(query: str, limit: int = 15) -> list[dict[str, Optional[str]]
     try:
         search = yf.Search(q)
         quotes = getattr(search, "quotes", None) or []
-        for item in quotes[:limit]:
+        asx_only: list[dict[str, Optional[str]]] = []
+        for item in quotes:
             sym = item.get("symbol")
-            if sym:
-                results.append(
-                    {
-                        "ticker": str(sym).upper(),
-                        "name": item.get("shortname") or item.get("longname"),
-                    }
-                )
+            if not sym or not _is_asx_listing(item):
+                continue
+            asx_only.append(
+                {
+                    "ticker": str(sym).upper(),
+                    "name": item.get("shortname") or item.get("longname"),
+                }
+            )
+            if len(asx_only) >= limit:
+                break
+        results = asx_only
     except Exception:
         pass
     if not results:

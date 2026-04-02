@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.config import settings
@@ -21,6 +21,34 @@ def _create_engine():
 engine = _create_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+def ensure_schema_upgrades() -> None:
+    """Apply additive DDL for DBs created before new columns existed.
+
+    `Base.metadata.create_all()` never alters existing tables, so older Postgres
+    volumes lack `transactions.notes` / `portfolio_equity_after` and every query 500s.
+    """
+    insp = inspect(engine)
+    if "transactions" not in insp.get_table_names():
+        return
+    names = {c["name"] for c in insp.get_columns("transactions")}
+    dialect = engine.dialect.name
+    stmts: list[str] = []
+    if "notes" not in names:
+        stmts.append("ALTER TABLE transactions ADD COLUMN notes TEXT")
+    if "portfolio_equity_after" not in names:
+        if dialect == "postgresql":
+            stmts.append(
+                "ALTER TABLE transactions ADD COLUMN portfolio_equity_after DOUBLE PRECISION"
+            )
+        else:
+            stmts.append("ALTER TABLE transactions ADD COLUMN portfolio_equity_after REAL")
+    if not stmts:
+        return
+    with engine.begin() as conn:
+        for sql in stmts:
+            conn.execute(text(sql))
 
 
 def get_db():

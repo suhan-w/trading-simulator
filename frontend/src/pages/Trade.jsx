@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import PriceChart from "../components/PriceChart";
+import { formatAud } from "../formatAud";
 
 export default function Trade() {
   const { refresh } = useAuth();
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
-  const [ticker, setTicker] = useState("AAPL");
+  const [ticker, setTicker] = useState("CBA.AX");
   const [quote, setQuote] = useState(null);
   const [bars, setBars] = useState([]);
   const [period, setPeriod] = useState("3mo");
@@ -95,7 +96,16 @@ export default function Trade() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold mb-1">Trade</h1>
-        <p className="text-slate-400 text-sm">Search tickers, place market or limit orders. Quote refreshes every 30s.</p>
+        <p className="text-slate-400 text-sm">
+          ASX stocks use Yahoo symbols with a <span className="font-mono">.AX</span> suffix (e.g.{" "}
+          <span className="font-mono">BHP.AX</span>, <span className="font-mono">CBA.AX</span>). Plain codes like{" "}
+          <span className="font-mono">CBA</span> are treated as <span className="font-mono">CBA.AX</span>. Prices and
+          orders are in <strong className="text-slate-300">AUD</strong>. Quote refreshes every 30s.
+        </p>
+        <p className="text-slate-500 text-xs mt-2 border-l-2 border-surface-600 pl-3">
+          ASX regular session: Monday to Friday, 10:00am–4:00pm Sydney time. See the header for live Open / Closed
+          (weekday hours only; public holidays not detected).
+        </p>
       </div>
 
       <form onSubmit={onSearch} className="flex flex-wrap gap-2">
@@ -133,20 +143,18 @@ export default function Trade() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Ticker</label>
+              <label className="block text-xs text-slate-400 mb-1">Ticker (.AX)</label>
               <input
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                className="font-mono rounded-lg bg-surface-800 border border-surface-700 px-4 py-2.5 w-32"
+                className="font-mono rounded-lg bg-surface-800 border border-surface-700 px-4 py-2.5 w-36"
+                placeholder="CBA.AX"
               />
             </div>
             {quote && (
               <div>
-                <div className="text-xs text-slate-400">Last price</div>
-                <div className="text-2xl font-mono font-semibold text-white">
-                  ${quote.price.toFixed(2)}{" "}
-                  <span className="text-slate-500 text-base">{quote.currency}</span>
-                </div>
+                <div className="text-xs text-slate-400">Last price (AUD)</div>
+                <div className="text-2xl font-mono font-semibold text-white">{formatAud(quote.price)}</div>
                 {quote.name && <div className="text-slate-400 text-sm">{quote.name}</div>}
               </div>
             )}
@@ -189,7 +197,7 @@ export default function Trade() {
             </div>
             {orderType === "limit" && (
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Limit price</label>
+                <label className="block text-xs text-slate-400 mb-1">Limit price (AUD)</label>
                 <input
                   type="number"
                   step="any"

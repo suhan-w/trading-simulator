@@ -2,10 +2,16 @@ from fastapi import APIRouter, Depends, Query
 
 from app.deps import get_current_user
 from app.models import User
-from app.schemas import ChartBar, QuoteOut, SearchResult
+from app.schemas import ChartBar, MarketSessionOut, QuoteOut, SearchResult
 from app.services import market_service
 
 router = APIRouter(prefix="/api/market", tags=["market"])
+
+
+@router.get("/asx-session", response_model=MarketSessionOut)
+def asx_session(_: User = Depends(get_current_user)):
+    data = market_service.asx_session_payload()
+    return MarketSessionOut(**data)
 
 
 @router.get("/search", response_model=list[SearchResult])

@@ -1,17 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
-
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=6)
-
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Token(BaseModel):
@@ -70,9 +60,20 @@ class TransactionOut(BaseModel):
     price: float
     total: float
     executed_at: datetime
+    notes: Optional[str] = None
+    portfolio_equity_after: Optional[float] = None
 
     class Config:
         from_attributes = True
+
+
+class TransactionNotesUpdate(BaseModel):
+    notes: Optional[str] = Field(None, max_length=4000)
+
+
+class EquityPoint(BaseModel):
+    time: str
+    equity: float
 
 
 class HoldingOut(BaseModel):
@@ -94,39 +95,17 @@ class PortfolioOut(BaseModel):
     holdings: list[HoldingOut]
 
 
-class BacktestRequest(BaseModel):
-    ticker: str = Field(..., min_length=1, max_length=32)
-    start_date: str = Field(..., description="YYYY-MM-DD")
-    end_date: str = Field(..., description="YYYY-MM-DD")
-    fast_period: int = Field(10, ge=2, le=200)
-    slow_period: int = Field(30, ge=3, le=300)
-
-
-class BacktestResult(BaseModel):
-    ticker: str
-    start_date: str
-    end_date: str
-    strategy: str
-    total_return_pct: float
-    win_rate_pct: float
-    max_drawdown_pct: float
-    num_trades: int
-    final_equity: float
-
-
-class LeaderboardEntry(BaseModel):
-    rank: int
-    user_id: int
-    email: str
-    total_equity: float
-    gain_loss_pct: float
-
-
 class QuoteOut(BaseModel):
     ticker: str
     price: float
     currency: str
     name: Optional[str] = None
+
+
+class MarketSessionOut(BaseModel):
+    open: bool
+    hours_note: str
+    sydney_time: str
 
 
 class SearchResult(BaseModel):

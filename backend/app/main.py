@@ -4,17 +4,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import Base, engine
-from app.routers import auth, backtest, leaderboard, market, orders, portfolio
+from app.database import Base, engine, ensure_schema_upgrades
+from app.routers import auth, market, orders, portfolio
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_schema_upgrades()
     yield
 
 
-app = FastAPI(title="Trading Strategy Simulator API", lifespan=lifespan)
+app = FastAPI(title="ASX Paper Trading API", lifespan=lifespan)
 
 # Browser dev servers on localhost / LAN; regex covers any port (Vite, etc.)
 _local_origin_regex = (
@@ -42,8 +43,6 @@ app.include_router(auth.router)
 app.include_router(market.router)
 app.include_router(orders.router)
 app.include_router(portfolio.router)
-app.include_router(backtest.router)
-app.include_router(leaderboard.router)
 
 
 @app.get("/health")

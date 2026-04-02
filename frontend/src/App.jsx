@@ -3,8 +3,7 @@ import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Trade from "./pages/Trade";
-import Backtest from "./pages/Backtest";
-import Leaderboard from "./pages/Leaderboard";
+import Journal from "./pages/Journal";
 
 function GuestGate({ error, onRetry }) {
   return (
@@ -59,8 +58,7 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="trade" element={<Trade />} />
-        <Route path="backtest" element={<Backtest />} />
-        <Route path="leaderboard" element={<Leaderboard />} />
+        <Route path="journal" element={<Journal />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

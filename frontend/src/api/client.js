@@ -67,6 +67,7 @@ export const api = {
   me: () => request("/api/auth/me"),
   logout: () => request("/api/auth/logout", { method: "POST" }),
 
+  asxSession: () => request("/api/market/asx-session"),
   search: (q) => request(`/api/market/search?q=${encodeURIComponent(q)}`),
   quote: (ticker) => request(`/api/market/quote/${encodeURIComponent(ticker)}`),
   chart: (ticker, period = "3mo") =>
@@ -77,8 +78,8 @@ export const api = {
   transactions: () => request("/api/transactions"),
 
   portfolio: () => request("/api/portfolio"),
+  equityHistory: () => request("/api/portfolio/equity-history"),
 
-  backtest: (body) => request("/api/backtest", { method: "POST", body }),
-
-  leaderboard: () => request("/api/leaderboard"),
+  updateTransactionNotes: (id, notes) =>
+    request(`/api/transactions/${id}/notes`, { method: "PATCH", body: { notes } }),
 };

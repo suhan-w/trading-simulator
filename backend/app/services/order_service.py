@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models import Holding, Order, OrderSide, OrderStatus, OrderType, Transaction, User
+from app.services import equity as equity_svc
 from app.services import market_service
 
 
@@ -14,7 +15,7 @@ def _get_holding(db: Session, user_id: int, ticker: str) -> Holding | None:
     )
 
 
-def _apply_buy(db: Session, user: User, ticker: str, qty: float, price: float, order_id: int | None):
+def _apply_buy(db: Session, user: User, ticker: str, qty: float, price: float, order_id: int | None) -> Transaction:
     total = round(qty * price, 2)
     if user.cash_balance < total - 1e-6:
         raise ValueError("Insufficient cash")
@@ -40,9 +41,12 @@ def _apply_buy(db: Session, user: User, ticker: str, qty: float, price: float, o
         order_id=order_id,
     )
     db.add(tx)
+    db.flush()
+    tx.portfolio_equity_after = equity_svc.mark_to_market_equity(db, user)
+    return tx
 
 
-def _apply_sell(db: Session, user: User, ticker: str, qty: float, price: float, order_id: int | None):
+def _apply_sell(db: Session, user: User, ticker: str, qty: float, price: float, order_id: int | None) -> Transaction:
     h = _get_holding(db, user.id, ticker)
     if h is None or h.quantity + 1e-9 < qty:
         raise ValueError("Insufficient shares")
@@ -61,6 +65,9 @@ def _apply_sell(db: Session, user: User, ticker: str, qty: float, price: float, 
         order_id=order_id,
     )
     db.add(tx)
+    db.flush()
+    tx.portfolio_equity_after = equity_svc.mark_to_market_equity(db, user)
+    return tx
 
 
 def execute_market_order(db: Session, user: User, body) -> Order:

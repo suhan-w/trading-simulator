@@ -1,142 +1,98 @@
-# Trading Strategy Simulator
+# PaperTrade
 
-Full-stack paper trading platform: **React + Tailwind CSS** frontend, **FastAPI** backend, **PostgreSQL** database, **TradingView Lightweight Charts**, and market data from **Yahoo Finance** via `yfinance`.
+Single-user **ASX paper trading** app: **React + Tailwind**, **FastAPI**, **PostgreSQL**, **Lightweight Charts**, and **Yahoo Finance** (`yfinance`) for live **AUD** prices on **`.AX`** symbols.
 
 ## Features
 
-- **Authentication**: Register, login, logout with **JWT** bearer tokens. Each new user starts with **$100,000** virtual cash.
-- **Market data**: Search symbols, live quotes, OHLCV for charts. The UI refreshes quotes on a **30-second** interval.
-- **Trading**: Market and limit orders, buy/sell, transaction history on the dashboard.
-- **Portfolio**: Holdings, cash, total equity, unrealized P/L per line and overall, total return vs starting balance.
-- **Charts**: Candlestick charts (Lightweight Charts) with selectable range.
-- **Backtesting**: SMA crossover strategy on historical data; metrics include total return, win rate, max drawdown, trade count.
-- **Leaderboard**: Users ranked by **% gain/loss** since the $100k starting point.
+- **A$100,000 virtual cash** per session (guest JWT). No social or leaderboard.
+- **ASX**: tickers use Yahoo’s **`.AX`** suffix (e.g. `BHP.AX`); plain codes like `CBA` are normalized to `CBA.AX`. Search prefers ASX listings.
+- **Market clock**: UI shows **Open / Closed** for ASX regular hours (Mon–Fri **10:00–16:00 Sydney**); `GET /api/market/asx-session` returns the same (public holidays not modeled).
+- **Trade**: search tickers, market & limit buy/sell, live quote refresh (~30s on dashboard).
+- **Dashboard**: portfolio value over time (line chart), cash, total return, unrealized P/L, holdings with per-stock P/L.
+- **Journal**: optional notes on each fill (`PATCH /api/transactions/{id}/notes`).
 
 ## Project layout
 
 ```
-trading-simulator/
-├── docker-compose.yml      # Postgres + API + static frontend
-├── README.md
-├── backend/                  # FastAPI app
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py
-│       ├── config.py
-│       ├── database.py
-│       ├── models.py
-│       ├── schemas.py
-│       ├── security.py
-│       ├── deps.py
-│       ├── routers/
-│       └── services/
-└── frontend/                 # Vite + React
-    ├── Dockerfile
-    ├── nginx.conf
-    ├── package.json
-    └── src/
+├── docker-compose.yml
+├── backend/          # FastAPI
+└── frontend/         # Vite + React
 ```
 
-## Quick start with Docker
-
-Prerequisites: **Docker** and **Docker Compose**.
-
-1. Clone or copy this project and open a terminal in `trading-simulator/`.
-
-2. (Optional) Copy environment file and set a strong JWT secret:
-
-   ```bash
-   cp .env.example .env
-   # Edit .env and set SECRET_KEY
-   ```
-
-3. Build and start:
-
-   ```bash
-   docker compose up --build
-   ```
-
-4. Open the app:
-
-   - **Frontend**: [http://localhost:8080](http://localhost:8080) (nginx maps host **8080** → container 80 so it does not clash with macOS services using port 80)
-   - **API docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-   - **Health**: [http://localhost:8000/health](http://localhost:8000/health)
-
-The UI calls **`/api` on the same host**; nginx proxies that to the API container (see `frontend/nginx.conf`).
-
-5. The app runs in **guest mode** (no registration). Wait until logs show the API is healthy, then load the page.
-
-To stop:
+## Docker
 
 ```bash
-docker compose down
+docker compose up --build
 ```
 
-## Local development (without Docker for Node/Python)
+- App: [http://localhost:8080](http://localhost:8080)
+- API: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### Database
+The UI uses same-origin `/api`; nginx proxies to the API container.
 
-Run PostgreSQL (for example with Docker):
+Stop: `Ctrl+C` then `docker compose down`.
+
+### Database schema changes
+
+If you upgraded from an older image and see SQL errors about missing columns, reset the DB volume once:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+## Local development
+
+PostgreSQL (example):
 
 ```bash
 docker run --name trading-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=trading_sim -p 5432:5432 -d postgres:16-alpine
 ```
 
-### Backend
-
-Use **Python 3.11 or 3.12** for the smoothest installs (wheels for scientific stacks). The API uses **psycopg3** (`postgresql+psycopg://` is applied automatically in code).
+Backend:
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/trading_sim
-export SECRET_KEY=your-dev-secret
+export SECRET_KEY=dev-secret
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Tables are created automatically on startup (`create_all`).
-
-### Frontend
+Frontend:
 
 ```bash
 cd frontend
-cp .env.example .env.development
-# Ensure VITE_API_URL=http://localhost:8000
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
 ## Configuration
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | SQLAlchemy URL for PostgreSQL |
-| `SECRET_KEY` | JWT signing key (set in production) |
-| `INITIAL_CASH` | Starting balance (default `100000`) — wired in `app/config.py` |
-| `VITE_API_URL` | Frontend API base URL (Vite env, build-time) |
+| `DATABASE_URL` | PostgreSQL URL |
+| `SECRET_KEY` | JWT signing key |
+| `INITIAL_CASH` | Starting cash in **AUD** (default `100000`) in `app/config.py` |
+| `VITE_API_URL` | Optional; omit for `/api` proxy |
 
-## API overview
+## API (high level)
 
-- `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
-- `GET /api/market/search`, `GET /api/market/quote/{ticker}`, `GET /api/market/chart/{ticker}`
-- `POST /api/orders`, `GET /api/orders`, `GET /api/transactions`
-- `GET /api/portfolio`
-- `POST /api/backtest`
-- `GET /api/leaderboard`
+- `POST /api/auth/guest`, `GET /api/auth/me`, `POST /api/auth/logout`
+- Market: `asx-session`, `search`, `quote`, `chart`
+- `POST /api/orders`, `GET /api/orders`, `GET /api/transactions`, `PATCH /api/transactions/{id}/notes`
+- `GET /api/portfolio`, `GET /api/portfolio/equity-history`
 
-All routes except register/login require `Authorization: Bearer <token>`.
+Authenticated routes need `Authorization: Bearer <token>`.
 
 ## Notes
 
-- **Yahoo Finance** data depends on public endpoints; rate limits or occasional failures can occur. Retry or wait if quotes fail.
-- Limit orders are evaluated when portfolio or quotes are refreshed (including the 30s UI polling).
-- Backtesting uses a **simple SMA crossover**; extend `app/services/backtest_service.py` for other strategies.
+- Yahoo Finance data can be rate-limited or flaky.
+- Limit orders fill when portfolio/quotes refresh (e.g. dashboard 30s poll).
 
 ## License
 
-Use and modify for learning and demos. Not financial advice.
+Use for learning and demos. Not financial advice.

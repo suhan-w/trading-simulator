@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import Order, Transaction, User
-from app.schemas import OrderCreate, OrderOut, TransactionOut
+from app.schemas import OrderCreate, OrderOut, TransactionNotesUpdate, TransactionOut
 from app.services import order_service
 
 router = APIRouter(prefix="/api", tags=["orders"])
@@ -61,3 +61,23 @@ def list_transactions(
         .all()
     )
     return rows
+
+
+@router.patch("/transactions/{transaction_id}/notes", response_model=TransactionOut)
+def update_transaction_notes(
+    transaction_id: int,
+    body: TransactionNotesUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    tx = (
+        db.query(Transaction)
+        .filter(Transaction.id == transaction_id, Transaction.user_id == user.id)
+        .first()
+    )
+    if tx is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    tx.notes = body.notes
+    db.commit()
+    db.refresh(tx)
+    return tx

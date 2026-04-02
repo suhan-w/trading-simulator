@@ -1,19 +1,11 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Holding, User
-from app.services import market_service
+from app.models import Holding, Transaction, User
+from app.services import equity as equity_svc
 from app.services.order_service import process_pending_orders_for_user
-
-
-def _price_map(tickers: list[str]) -> dict[str, float]:
-    out: dict[str, float] = {}
-    for t in tickers:
-        try:
-            out[t] = market_service.get_quote(t)["price"]
-        except Exception:
-            out[t] = 0.0
-    return out
 
 
 def build_portfolio(db: Session, user: User) -> dict:
@@ -21,7 +13,7 @@ def build_portfolio(db: Session, user: User) -> dict:
     db.refresh(user)
     holdings_rows = db.query(Holding).filter(Holding.user_id == user.id).all()
     tickers = [h.ticker for h in holdings_rows]
-    prices = _price_map(tickers)
+    prices = equity_svc.price_map_for_tickers(tickers)
 
     holdings_out = []
     total_unrealized = 0.0
@@ -61,7 +53,37 @@ def build_portfolio(db: Session, user: User) -> dict:
     }
 
 
-def total_equity_for_user(db: Session, user: User) -> float:
+def equity_history_points(db: Session, user: User) -> list[dict]:
+    """Time series for portfolio value chart: start cash + after each trade + current."""
     data = build_portfolio(db, user)
-    db.commit()
-    return data["total_equity"]
+    cur = data["total_equity"]
+    db.refresh(user)
+    initial = float(settings.initial_cash)
+    uc = user.created_at
+    if uc is not None and uc.tzinfo is None:
+        uc = uc.replace(tzinfo=timezone.utc)
+    t0 = uc.isoformat() if uc else datetime.now(timezone.utc).isoformat()
+    points: list[dict] = [{"time": t0, "equity": initial}]
+
+    txs = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == user.id, Transaction.portfolio_equity_after.isnot(None))
+        .order_by(Transaction.executed_at.asc())
+        .all()
+    )
+    for tx in txs:
+        ex = tx.executed_at
+        if ex is not None and ex.tzinfo is None:
+            ex = ex.replace(tzinfo=timezone.utc)
+        points.append(
+            {
+                "time": ex.isoformat() if ex else "",
+                "equity": float(tx.portfolio_equity_after or 0),
+            }
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    if not points or abs(points[-1]["equity"] - cur) > 0.005:
+        points.append({"time": now, "equity": cur})
+
+    return points
