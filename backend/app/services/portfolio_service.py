@@ -54,7 +54,7 @@ def build_portfolio(db: Session, user: User) -> dict:
 
 
 def equity_history_points(db: Session, user: User) -> list[dict]:
-    """Time series for portfolio value chart: start cash + after each trade + current."""
+    """Time series: start cash + after each trade + current (for charts and reports)."""
     data = build_portfolio(db, user)
     cur = data["total_equity"]
     db.refresh(user)

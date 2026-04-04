@@ -1,9 +1,9 @@
 import { Route, Routes, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
-import Dashboard from "./pages/Dashboard";
-import Trade from "./pages/Trade";
-import Journal from "./pages/Journal";
+import Trading from "./pages/Trading";
+import PortfolioPage from "./pages/PortfolioPage";
+import PerformanceReport from "./pages/PerformanceReport";
 
 function GuestGate({ error, onRetry }) {
   return (
@@ -56,9 +56,9 @@ export default function App() {
           </Protected>
         }
       >
-        <Route index element={<Dashboard />} />
-        <Route path="trade" element={<Trade />} />
-        <Route path="journal" element={<Journal />} />
+        <Route index element={<Trading />} />
+        <Route path="portfolio" element={<PortfolioPage />} />
+        <Route path="performance" element={<PerformanceReport />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

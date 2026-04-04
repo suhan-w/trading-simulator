@@ -27,7 +27,7 @@ def ensure_schema_upgrades() -> None:
     """Apply additive DDL for DBs created before new columns existed.
 
     `Base.metadata.create_all()` never alters existing tables, so older Postgres
-    volumes lack `transactions.notes` / `portfolio_equity_after` and every query 500s.
+    volumes may lack `transactions.portfolio_equity_after` and equity queries 500.
     """
     insp = inspect(engine)
     if "transactions" not in insp.get_table_names():
@@ -35,8 +35,6 @@ def ensure_schema_upgrades() -> None:
     names = {c["name"] for c in insp.get_columns("transactions")}
     dialect = engine.dialect.name
     stmts: list[str] = []
-    if "notes" not in names:
-        stmts.append("ALTER TABLE transactions ADD COLUMN notes TEXT")
     if "portfolio_equity_after" not in names:
         if dialect == "postgresql":
             stmts.append(

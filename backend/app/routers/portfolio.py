@@ -34,4 +34,4 @@ def get_equity_history(
 ):
     pts = equity_history_points(db, user)
     db.commit()
-    return [EquityPoint(**p) for p in pts]
+    return [EquityPoint(time=p["time"], equity=p["equity"]) for p in pts]

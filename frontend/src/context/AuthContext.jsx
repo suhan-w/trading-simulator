@@ -55,8 +55,18 @@ export function AuthProvider({ children }) {
     await refresh();
   }, [refresh]);
 
+  const refreshMe = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const u = await api.me();
+      setUser(u);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, guestError, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, guestError, logout, refresh, refreshMe }}>
       {children}
     </AuthContext.Provider>
   );

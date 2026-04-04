@@ -1,0 +1,284 @@
+"""Performance report: metrics, equity curve, benchmark vs S&P/ASX 200 (^AXJO)."""
+
+from __future__ import annotations
+
+import math
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models import Transaction, User
+from app.services import market_service
+from app.services.portfolio_service import build_portfolio, equity_history_points
+
+# Yahoo Finance symbol for S&P/ASX 200 index
+BENCHMARK_SYMBOL = "^AXJO"
+
+
+def _equity_ts(iso: str) -> datetime:
+    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+
+
+def _filter_equity_window(points: list[dict], start: date, end: date) -> list[dict]:
+    out = []
+    end_dt = datetime.combine(end, datetime.max.time(), tzinfo=timezone.utc)
+    start_d = start
+    for p in points:
+        try:
+            t = _equity_ts(p["time"])
+        except ValueError:
+            continue
+        if t.date() < start_d or t > end_dt:
+            continue
+        out.append(dict(p))
+    if not out:
+        return []
+    out.sort(key=lambda x: _equity_ts(x["time"]))
+    return out
+
+
+def _forward_fill_daily(equity_points: list[dict], start: date, end: date) -> list[dict]:
+    """One row per calendar day: last known equity on or before that day."""
+    if not equity_points:
+        return []
+    pts = sorted(equity_points, key=lambda x: _equity_ts(x["time"]))
+    daily: list[dict] = []
+    idx = 0
+    last_eq = float(pts[0]["equity"])
+    while idx < len(pts) and _equity_ts(pts[idx]["time"]).date() < start:
+        last_eq = float(pts[idx]["equity"])
+        idx += 1
+    cur = start
+    while cur <= end:
+        while idx < len(pts) and _equity_ts(pts[idx]["time"]).date() <= cur:
+            last_eq = float(pts[idx]["equity"])
+            idx += 1
+        daily.append({"date": cur.isoformat(), "equity": last_eq})
+        cur += timedelta(days=1)
+    return daily
+
+
+def _to_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _fifo_sell_pnls(transactions: list[Transaction]) -> list[dict[str, Any]]:
+    """Realised P/L per sell (FIFO lots), chronological."""
+    lots: dict[str, list[list[float]]] = defaultdict(list)  # ticker -> [qty, price] stacks
+    results: list[dict[str, Any]] = []
+    for tx in sorted(transactions, key=lambda t: t.executed_at or datetime.min):
+        t = tx.ticker
+        if tx.side == "buy":
+            lots[t].append([float(tx.quantity), float(tx.price)])
+        else:
+            qty_need = float(tx.quantity)
+            cost = 0.0
+            while qty_need > 1e-9 and lots[t]:
+                lq, lp = lots[t][0]
+                take = min(lq, qty_need)
+                cost += take * lp
+                lq -= take
+                qty_need -= take
+                if lq < 1e-9:
+                    lots[t].pop(0)
+                else:
+                    lots[t][0][0] = lq
+            proceeds = float(tx.total)
+            pnl = proceeds - cost
+            results.append(
+                {
+                    "executed_at": tx.executed_at,
+                    "ticker": t,
+                    "quantity": float(tx.quantity),
+                    "price": float(tx.price),
+                    "realized_pnl": round(pnl, 2),
+                }
+            )
+    return results
+
+
+def _max_drawdown_pct(equities: list[float]) -> float:
+    if not equities:
+        return 0.0
+    peak = equities[0]
+    max_dd = 0.0
+    for e in equities:
+        peak = max(peak, e)
+        if peak > 0:
+            dd = (peak - e) / peak * 100
+            max_dd = max(max_dd, dd)
+    return round(max_dd, 3)
+
+
+def _sharpe_ratio(daily_equities: list[float]) -> float | None:
+    if len(daily_equities) < 3:
+        return None
+    rets: list[float] = []
+    for i in range(1, len(daily_equities)):
+        a, b = daily_equities[i - 1], daily_equities[i]
+        if a > 0:
+            rets.append((b - a) / a)
+    if len(rets) < 2:
+        return None
+    mean_r = sum(rets) / len(rets)
+    var = sum((r - mean_r) ** 2 for r in rets) / (len(rets) - 1)
+    std = math.sqrt(var) if var > 0 else 0.0
+    if std < 1e-12:
+        return None
+    # Annualise: ~252 trading days
+    return round((mean_r / std) * math.sqrt(252), 4)
+
+
+def build_performance_report(
+    db: Session,
+    user: User,
+    start: date,
+    end: date,
+) -> dict[str, Any]:
+    if start > end:
+        start, end = end, start
+
+    all_points = equity_history_points(db, user)
+    window_pts = _filter_equity_window(all_points, start, end)
+
+    data = build_portfolio(db, user)
+    db.commit()
+
+    txs = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == user.id)
+        .order_by(Transaction.executed_at.asc())
+        .all()
+    )
+
+    start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+    end_dt = datetime.combine(end, datetime.max.time(), tzinfo=timezone.utc)
+
+    txs_in_range = [
+        t for t in txs if t.executed_at and start_dt <= _to_utc(t.executed_at) <= end_dt
+    ]
+
+    sell_pnls_all = _fifo_sell_pnls(txs)
+    sells_in_range = [
+        s for s in sell_pnls_all if s["executed_at"] and start_dt <= _to_utc(s["executed_at"]) <= end_dt
+    ]
+
+    win_rate: float | None = None
+    best_trade: dict[str, Any] | None = None
+    worst_trade: dict[str, Any] | None = None
+    if sells_in_range:
+        wins = sum(1 for s in sells_in_range if s["realized_pnl"] > 0)
+        win_rate = round(100.0 * wins / len(sells_in_range), 2)
+        best = max(sells_in_range, key=lambda x: x["realized_pnl"])
+        worst = min(sells_in_range, key=lambda x: x["realized_pnl"])
+        best_trade = {
+            "ticker": best["ticker"],
+            "realized_pnl": best["realized_pnl"],
+            "quantity": best["quantity"],
+            "price": best["price"],
+        }
+        worst_trade = {
+            "ticker": worst["ticker"],
+            "realized_pnl": worst["realized_pnl"],
+            "quantity": worst["quantity"],
+            "price": worst["price"],
+        }
+
+    daily_pf = _forward_fill_daily(all_points, start, end)
+    daily_eq = [d["equity"] for d in daily_pf]
+    max_dd = _max_drawdown_pct(daily_eq) if daily_eq else 0.0
+    sharpe = _sharpe_ratio(daily_eq)
+
+    if not window_pts and all_points:
+        before = [p for p in all_points if _equity_ts(p["time"]).date() < start]
+        start_iso = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc).isoformat()
+        end_iso = datetime.now(timezone.utc).isoformat()
+        if before:
+            last = max(before, key=lambda x: _equity_ts(x["time"]))
+            window_pts = [
+                {"time": start_iso, "equity": last["equity"]},
+                {"time": end_iso, "equity": float(data["total_equity"])},
+            ]
+        else:
+            window_pts = [
+                {"time": start_iso, "equity": float(settings.initial_cash)},
+                {"time": end_iso, "equity": float(data["total_equity"])},
+            ]
+
+    e0 = window_pts[0]["equity"] if window_pts else float(data["total_equity"])
+    equity_curve = [
+        {"time": p["time"], "equity": round(float(p["equity"]), 2)} for p in window_pts
+    ]
+    return_pct_series = [
+        {
+            "time": p["time"],
+            "return_pct": round((float(p["equity"]) / e0 - 1) * 100, 4) if e0 > 0 else 0.0,
+        }
+        for p in window_pts
+    ]
+
+    tickers = set()
+    for t in txs_in_range:
+        tickers.add(t.ticker)
+    for h in data["holdings"]:
+        tickers.add(h["ticker"])
+
+    per_stock: list[dict[str, Any]] = []
+    end_fetch = end + timedelta(days=1)
+    for sym in sorted(tickers):
+        r = market_service.ticker_return_over_range(sym, start, end_fetch)
+        if r is not None:
+            per_stock.append({"ticker": sym, "return_pct": r})
+
+    bench_rows = market_service.benchmark_closes_daily(BENCHMARK_SYMBOL, start, end_fetch)
+    portfolio_norm: list[dict[str, Any]] = []
+    benchmark_norm: list[dict[str, Any]] = []
+    if bench_rows and daily_pf:
+        bench_by_date = {row["date"]: row["close"] for row in bench_rows}
+        pf_by_date = {row["date"]: row["equity"] for row in daily_pf}
+        common_dates = sorted(set(bench_by_date) & set(pf_by_date))
+        if common_dates:
+            d0 = common_dates[0]
+            p0 = pf_by_date[d0]
+            b0 = bench_by_date[d0]
+            for d in common_dates:
+                if p0 > 0 and b0 > 0:
+                    portfolio_norm.append(
+                        {
+                            "date": d,
+                            "value": round(100.0 * pf_by_date[d] / p0, 4),
+                        }
+                    )
+                    benchmark_norm.append(
+                        {
+                            "date": d,
+                            "value": round(100.0 * bench_by_date[d] / b0, 4),
+                        }
+                    )
+
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "equity_curve": equity_curve,
+        "return_pct_series": return_pct_series,
+        "per_stock_performance": per_stock,
+        "win_rate_pct": win_rate,
+        "best_trade": best_trade,
+        "worst_trade": worst_trade,
+        "max_drawdown_pct": max_dd,
+        "sharpe_ratio": sharpe,
+        "trade_count": len(txs_in_range),
+        "sell_count": len(sells_in_range),
+        "portfolio_vs_benchmark": {
+            "portfolio": portfolio_norm,
+            "benchmark": benchmark_norm,
+            "benchmark_symbol": BENCHMARK_SYMBOL,
+            "benchmark_label": "S&P/ASX 200",
+        },
+        "initial_equity": float(settings.initial_cash),
+    }

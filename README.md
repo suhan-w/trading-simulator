@@ -1,15 +1,14 @@
-# PaperTrade
+# Signal Trader (ASX paper simulator)
 
-Single-user **ASX paper trading** app: **React + Tailwind**, **FastAPI**, **PostgreSQL**, **Lightweight Charts**, and **Yahoo Finance** (`yfinance`) for live **AUD** prices on **`.AX`** symbols.
+**React + Tailwind**, **FastAPI**, **PostgreSQL**, **Lightweight Charts**, and **Yahoo Finance** (`yfinance`) for **AUD** live prices on **`.AX`** symbols. Members follow **pre-generated signals from their own strategy code** and **execute trades manually** in the app.
 
-## Features
+## Product (three screens)
 
-- **A$100,000 virtual cash** per session (guest JWT). No social or leaderboard.
-- **ASX**: tickers use Yahoo’s **`.AX`** suffix (e.g. `BHP.AX`); plain codes like `CBA` are normalized to `CBA.AX`. Search prefers ASX listings.
-- **Market clock**: UI shows **Open / Closed** for ASX regular hours (Mon–Fri **10:00–16:00 Sydney**); `GET /api/market/asx-session` returns the same (public holidays not modeled).
-- **Trade**: search tickers, market & limit buy/sell, live quote refresh (~30s on dashboard).
-- **Dashboard**: portfolio value over time (line chart), cash, total return, unrealized P/L, holdings with per-stock P/L.
-- **Journal**: optional notes on each fill (`PATCH /api/transactions/{id}/notes`).
+1. **Trading** — Ticker, **BUY/SELL**, quantity, **live Yahoo quote**; **cash** and **portfolio value**; market orders only in the UI.
+2. **Portfolio** — Holdings with **unrealised P/L per stock**, **cash**, **total value**.
+3. **Performance report** — Date range → portfolio value over time, return % over time, **per-stock return** chart, **win rate** (realised sells), **best/worst trade**, **max drawdown**, **Sharpe**, **trade counts**, and **portfolio vs S&P/ASX 200** (`^AXJO` on Yahoo).
+
+There is **no** stock discovery, search, signal log, journal, leaderboard, social features, backtesting, or strategy submission in this codebase.
 
 ## Project layout
 
@@ -53,7 +52,7 @@ Backend:
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/trading_sim
 export SECRET_KEY=dev-secret
@@ -82,16 +81,17 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 ## API (high level)
 
 - `POST /api/auth/guest`, `GET /api/auth/me`, `POST /api/auth/logout`
-- Market: `asx-session`, `search`, `quote`, `chart`
-- `POST /api/orders`, `GET /api/orders`, `GET /api/transactions`, `PATCH /api/transactions/{id}/notes`
+- `GET /api/market/quote/{ticker}` — Yahoo ASX (`.AX`) quote
+- `POST /api/orders`, `GET /api/orders`
 - `GET /api/portfolio`, `GET /api/portfolio/equity-history`
+- `GET /api/performance/report?start=YYYY-MM-DD&end=YYYY-MM-DD` — full performance payload (charts + stats)
 
 Authenticated routes need `Authorization: Bearer <token>`.
 
 ## Notes
 
 - Yahoo Finance data can be rate-limited or flaky.
-- Limit orders fill when portfolio/quotes refresh (e.g. dashboard 30s poll).
+- Limit orders remain in the API; the trading UI submits **market** orders only.
 
 ## License
 

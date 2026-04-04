@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, engine, ensure_schema_upgrades
-from app.routers import auth, market, orders, portfolio
+from app.routers import auth, market, orders, performance, portfolio
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(market.router)
 app.include_router(orders.router)
+app.include_router(performance.router)
 app.include_router(portfolio.router)
 
 

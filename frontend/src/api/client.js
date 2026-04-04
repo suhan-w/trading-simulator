@@ -1,6 +1,6 @@
 /**
  * Default: same-origin `/api` (Vite dev proxy, or nginx → FastAPI in Docker).
- * Set VITE_API_URL only if the API is on another origin (e.g. https://api.example.com).
+ * Set VITE_API_URL only if the API is on another origin.
  */
 function apiBase() {
   const v = import.meta.env.VITE_API_URL;
@@ -34,7 +34,7 @@ async function request(path, options = {}) {
   } catch (e) {
     const msg =
       e instanceof TypeError
-        ? "Cannot reach the API. Start the backend on port 8000 (e.g. uvicorn), or set VITE_API_URL if the API runs elsewhere."
+        ? "Cannot reach the API. Start the backend on port 8000, or set VITE_API_URL."
         : String(e);
     throw new Error(msg);
   }
@@ -54,7 +54,7 @@ async function request(path, options = {}) {
     if (res.status === 404 && String(path).startsWith("/api")) {
       msg =
         typeof msg === "string" && msg === "Not Found"
-          ? "API not found. Use the Vite dev server with the backend running, Docker Compose (nginx proxies /api), or set VITE_API_URL to your FastAPI base URL."
+          ? "API not found. Use Vite with the backend running or set VITE_API_URL."
           : msg;
     }
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
@@ -67,19 +67,10 @@ export const api = {
   me: () => request("/api/auth/me"),
   logout: () => request("/api/auth/logout", { method: "POST" }),
 
-  asxSession: () => request("/api/market/asx-session"),
-  search: (q) => request(`/api/market/search?q=${encodeURIComponent(q)}`),
   quote: (ticker) => request(`/api/market/quote/${encodeURIComponent(ticker)}`),
-  chart: (ticker, period = "3mo") =>
-    request(`/api/market/chart/${encodeURIComponent(ticker)}?period=${period}`),
-
   placeOrder: (body) => request("/api/orders", { method: "POST", body }),
-  orders: () => request("/api/orders"),
-  transactions: () => request("/api/transactions"),
-
   portfolio: () => request("/api/portfolio"),
-  equityHistory: () => request("/api/portfolio/equity-history"),
 
-  updateTransactionNotes: (id, notes) =>
-    request(`/api/transactions/${id}/notes`, { method: "PATCH", body: { notes } }),
+  performanceReport: (start, end) =>
+    request(`/api/performance/report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
 };

@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -79,7 +79,6 @@ class Transaction(Base):
     total = Column(Float, nullable=False)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
     executed_at = Column(DateTime, default=datetime.utcnow)
-    notes = Column(Text, nullable=True)
     portfolio_equity_after = Column(Float, nullable=True)
 
     user = relationship("User", back_populates="transactions")
