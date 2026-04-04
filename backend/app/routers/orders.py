@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import Order, User
-from app.schemas import OrderCreate, OrderOut
+from app.schemas import OrderCreate, OrderOut, order_to_out
 from app.services import order_service
 
 router = APIRouter(prefix="/api", tags=["orders"])
@@ -30,7 +30,7 @@ def place_order(
         raise HTTPException(status_code=400, detail="Invalid order type")
     db.commit()
     db.refresh(order)
-    return order
+    return order_to_out(order)
 
 
 @router.get("/orders", response_model=list[OrderOut])
@@ -45,4 +45,4 @@ def list_orders(
         .limit(200)
         .all()
     )
-    return rows
+    return [order_to_out(o) for o in rows]

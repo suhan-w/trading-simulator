@@ -4,7 +4,7 @@
 
 ## Product (three screens)
 
-1. **Trading** — Ticker, **BUY/SELL**, quantity, **live quote** (Alpha Vantage `GLOBAL_QUOTE`); **cash** and **portfolio value**; market orders only in the UI; optional **position sizing** hints.
+1. **Trading** — Ticker, **BUY/SELL**, quantity, **live quote** (Alpha Vantage `GLOBAL_QUOTE`); **cash** and **portfolio value**; **market orders only when ASX is open** (Mon–Fri **10:00–16:00 Melbourne**, AEST/AEDT; Victorian public holidays closed); optional **position sizing** hints.
 2. **Portfolio** — Holdings with **unrealised P/L per stock**, **cash**, **total value** (mark-to-market via your API key).
 3. **Performance report** — Date range → equity curve, return %, per-stock returns (daily adjusted closes), stats, and **portfolio vs ASX 200 proxy** (**STW.AX** ETF on Alpha Vantage; not the raw index).
 
@@ -88,6 +88,7 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 - `POST /api/auth/guest` — anonymous session (no key)
 - `PATCH /api/auth/alpha-vantage-key` — body: `alpha_vantage_api_key` (authenticated)
 - `GET /api/auth/me`, `POST /api/auth/logout`
+- `GET /api/market/session` — ASX open/closed, Melbourne clock, countdown to next open, holiday/weekend reason
 - `GET /api/market/quote/{ticker}` — requires saved API key
 - `POST /api/orders`, `GET /api/orders`
 - `GET /api/portfolio`, `GET /api/portfolio/equity-history`

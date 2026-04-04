@@ -3,7 +3,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models import User
+from app.models import Order, User
+from app.services import melbourne_asx
 
 
 class Token(BaseModel):
@@ -56,6 +57,19 @@ class OrderCreate(BaseModel):
     limit_price: Optional[float] = Field(None, gt=0)
 
 
+class MarketSessionOut(BaseModel):
+    open: bool
+    melbourne_time_iso: str
+    melbourne_time_display: str
+    timezone_abbr: str
+    session_hours_note: str
+    closed_reason: Optional[str] = None
+    holiday_name: Optional[str] = None
+    seconds_until_open: Optional[int] = None
+    next_open_melbourne_iso: Optional[str] = None
+    next_open_display: Optional[str] = None
+
+
 class OrderOut(BaseModel):
     id: int
     ticker: str
@@ -67,9 +81,28 @@ class OrderOut(BaseModel):
     filled_price: Optional[float]
     created_at: datetime
     filled_at: Optional[datetime] = None
+    created_at_melbourne: str
+    filled_at_melbourne: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+def order_to_out(o: Order) -> OrderOut:
+    return OrderOut(
+        id=o.id,
+        ticker=o.ticker,
+        side=o.side,
+        order_type=o.order_type,
+        quantity=o.quantity,
+        limit_price=o.limit_price,
+        status=o.status,
+        filled_price=o.filled_price,
+        created_at=o.created_at,
+        filled_at=o.filled_at,
+        created_at_melbourne=melbourne_asx.utc_naive_to_melbourne_iso(o.created_at) if o.created_at else "",
+        filled_at_melbourne=melbourne_asx.utc_naive_to_melbourne_iso(o.filled_at) if o.filled_at else None,
+    )
 
 
 class EquityPoint(BaseModel):

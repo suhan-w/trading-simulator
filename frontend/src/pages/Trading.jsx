@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatAud } from "../formatAud";
@@ -14,6 +14,8 @@ function normalizeTickerInput(raw) {
 }
 
 export default function Trading() {
+  const { marketSession } = useOutletContext() ?? {};
+  const marketOpen = marketSession?.open === true;
   const { refreshMe, user } = useAuth();
   const [ticker, setTicker] = useState("");
   const [side, setSide] = useState("buy");
@@ -132,10 +134,18 @@ export default function Trading() {
       <div>
         <h1 className="text-2xl font-semibold text-white tracking-tight">Trading</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Enter signals from your strategy and execute manually. Market orders only; quotes use Alpha Vantage with your
-          API key.
+          Enter signals from your strategy and execute manually. Market orders only when the ASX session is open
+          (Melbourne time); quotes use Alpha Vantage with your API key.
         </p>
       </div>
+
+      {user?.has_alpha_vantage_key && marketSession && !marketSession.open && (
+        <div className="rounded-lg border border-slate-600 bg-surface-800/60 px-4 py-3 text-slate-200 text-sm">
+          <span className="font-medium text-amber-200">Market closed.</span> Orders execute only during{" "}
+          <strong className="text-white">Mon–Fri 10:00–16:00 Melbourne</strong> (AEST/AEDT), excluding Victorian public
+          holidays. Use the status bar above for the countdown to the next open.
+        </div>
+      )}
 
       {!user?.has_alpha_vantage_key && (
         <div className="rounded-lg border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-amber-100/95 text-sm">
@@ -284,7 +294,7 @@ export default function Trading() {
 
         <button
           type="submit"
-          disabled={submitting || !user?.has_alpha_vantage_key}
+          disabled={submitting || !user?.has_alpha_vantage_key || !marketOpen}
           className="w-full py-3 rounded-lg bg-accent text-surface-900 font-semibold hover:bg-accent-dim disabled:opacity-50"
         >
           {submitting ? "Submitting…" : "Execute market order"}

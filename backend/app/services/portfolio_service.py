@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Holding, Transaction, User
 from app.services import equity as equity_svc
+from app.services import melbourne_asx
 from app.services.order_service import process_pending_orders_for_user
 
 
@@ -60,9 +61,10 @@ def equity_history_points(db: Session, user: User) -> list[dict]:
     db.refresh(user)
     initial = float(settings.initial_cash)
     uc = user.created_at
-    if uc is not None and uc.tzinfo is None:
-        uc = uc.replace(tzinfo=timezone.utc)
-    t0 = uc.isoformat() if uc else datetime.now(timezone.utc).isoformat()
+    if uc is not None:
+        t0 = melbourne_asx.utc_naive_to_melbourne_iso(uc)
+    else:
+        t0 = melbourne_asx.utc_naive_to_melbourne_iso(datetime.now(timezone.utc).replace(tzinfo=None))
     points: list[dict] = [{"time": t0, "equity": initial}]
 
     txs = (
@@ -73,16 +75,15 @@ def equity_history_points(db: Session, user: User) -> list[dict]:
     )
     for tx in txs:
         ex = tx.executed_at
-        if ex is not None and ex.tzinfo is None:
-            ex = ex.replace(tzinfo=timezone.utc)
+        t_str = melbourne_asx.utc_naive_to_melbourne_iso(ex) if ex else ""
         points.append(
             {
-                "time": ex.isoformat() if ex else "",
+                "time": t_str,
                 "equity": float(tx.portfolio_equity_after or 0),
             }
         )
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = melbourne_asx.utc_naive_to_melbourne_iso(datetime.now(timezone.utc).replace(tzinfo=None))
     if not points or abs(points[-1]["equity"] - cur) > 0.005:
         points.append({"time": now, "equity": cur})
 

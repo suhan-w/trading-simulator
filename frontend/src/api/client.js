@@ -71,6 +71,7 @@ export const api = {
     request("/api/auth/alpha-vantage-key", { method: "PATCH", body: { alpha_vantage_api_key } }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
 
+  marketSession: () => request("/api/market/session"),
   quote: (ticker) => request(`/api/market/quote/${encodeURIComponent(ticker)}`),
   placeOrder: (body) => request("/api/orders", { method: "POST", body }),
   portfolio: () => request("/api/portfolio"),

@@ -1,10 +1,21 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
 from app.models import Holding, Order, OrderSide, OrderStatus, OrderType, Transaction, User
 from app.services import equity as equity_svc
 from app.services import market_service
+from app.services import melbourne_asx
+
+MARKET_CLOSED_MSG = (
+    "ASX is closed. Regular session: Monday–Friday 10:00–16:00 Melbourne (AEST/AEDT). "
+    "No trades outside session hours or on Victorian public holidays."
+)
+
+
+def _require_market_open() -> None:
+    if not melbourne_asx.is_asx_open_at():
+        raise ValueError(MARKET_CLOSED_MSG)
 
 
 def _alpha_vantage_key(user: User) -> str:
@@ -22,7 +33,15 @@ def _get_holding(db: Session, user_id: int, ticker: str) -> Holding | None:
     )
 
 
-def _apply_buy(db: Session, user: User, ticker: str, qty: float, price: float, order_id: int | None) -> Transaction:
+def _apply_buy(
+    db: Session,
+    user: User,
+    ticker: str,
+    qty: float,
+    price: float,
+    order_id: int | None,
+    executed_at: datetime | None = None,
+) -> Transaction:
     total = round(qty * price, 2)
     if user.cash_balance < total - 1e-6:
         raise ValueError("Insufficient cash")
@@ -38,6 +57,7 @@ def _apply_buy(db: Session, user: User, ticker: str, qty: float, price: float, o
     else:
         h.avg_cost = price
     h.quantity = new_qty
+    ex = executed_at if executed_at is not None else datetime.now(timezone.utc).replace(tzinfo=None)
     tx = Transaction(
         user_id=user.id,
         ticker=ticker,
@@ -46,6 +66,7 @@ def _apply_buy(db: Session, user: User, ticker: str, qty: float, price: float, o
         price=price,
         total=total,
         order_id=order_id,
+        executed_at=ex,
     )
     db.add(tx)
     db.flush()
@@ -53,7 +74,15 @@ def _apply_buy(db: Session, user: User, ticker: str, qty: float, price: float, o
     return tx
 
 
-def _apply_sell(db: Session, user: User, ticker: str, qty: float, price: float, order_id: int | None) -> Transaction:
+def _apply_sell(
+    db: Session,
+    user: User,
+    ticker: str,
+    qty: float,
+    price: float,
+    order_id: int | None,
+    executed_at: datetime | None = None,
+) -> Transaction:
     h = _get_holding(db, user.id, ticker)
     if h is None or h.quantity + 1e-9 < qty:
         raise ValueError("Insufficient shares")
@@ -62,6 +91,7 @@ def _apply_sell(db: Session, user: User, ticker: str, qty: float, price: float, 
     h.quantity = round(h.quantity - qty, 8)
     if h.quantity < 1e-8:
         db.delete(h)
+    ex = executed_at if executed_at is not None else datetime.now(timezone.utc).replace(tzinfo=None)
     tx = Transaction(
         user_id=user.id,
         ticker=ticker,
@@ -70,6 +100,7 @@ def _apply_sell(db: Session, user: User, ticker: str, qty: float, price: float, 
         price=price,
         total=total,
         order_id=order_id,
+        executed_at=ex,
     )
     db.add(tx)
     db.flush()
@@ -78,8 +109,9 @@ def _apply_sell(db: Session, user: User, ticker: str, qty: float, price: float, 
 
 
 def execute_market_order(db: Session, user: User, body) -> Order:
+    _require_market_open()
     ticker = market_service.normalize_ticker(body.ticker)
-    quote = market_service.get_quote(ticker)
+    quote = market_service.get_quote(ticker, _alpha_vantage_key(user))
     price = quote["price"]
     total = body.quantity * price
     if body.side == OrderSide.BUY.value:
@@ -90,6 +122,7 @@ def execute_market_order(db: Session, user: User, body) -> Order:
         if h is None or h.quantity + 1e-9 < body.quantity:
             raise ValueError("Insufficient shares")
 
+    fill_ts = datetime.now(timezone.utc).replace(tzinfo=None)
     order = Order(
         user_id=user.id,
         ticker=ticker,
@@ -99,18 +132,20 @@ def execute_market_order(db: Session, user: User, body) -> Order:
         limit_price=None,
         status=OrderStatus.FILLED.value,
         filled_price=price,
-        filled_at=datetime.utcnow(),
+        filled_at=fill_ts,
+        created_at=fill_ts,
     )
     db.add(order)
     db.flush()
     if body.side == OrderSide.BUY.value:
-        _apply_buy(db, user, ticker, body.quantity, price, order.id)
+        _apply_buy(db, user, ticker, body.quantity, price, order.id, executed_at=fill_ts)
     else:
-        _apply_sell(db, user, ticker, body.quantity, price, order.id)
+        _apply_sell(db, user, ticker, body.quantity, price, order.id, executed_at=fill_ts)
     return order
 
 
 def create_limit_order(db: Session, user: User, body) -> Order:
+    _require_market_open()
     ticker = market_service.normalize_ticker(body.ticker)
     if body.limit_price is None:
         raise ValueError("limit_price required for limit orders")
@@ -137,6 +172,8 @@ def create_limit_order(db: Session, user: User, body) -> Order:
 
 
 def process_pending_orders_for_user(db: Session, user: User) -> int:
+    if not melbourne_asx.is_asx_open_at():
+        return 0
     pending = (
         db.query(Order)
         .filter(
@@ -164,14 +201,15 @@ def process_pending_orders_for_user(db: Session, user: User) -> int:
             can_fill = True
         if not can_fill:
             continue
+        fill_ts = datetime.now(timezone.utc).replace(tzinfo=None)
         order.status = OrderStatus.FILLED.value
         order.filled_price = price
-        order.filled_at = datetime.utcnow()
+        order.filled_at = fill_ts
         try:
             if order.side == OrderSide.BUY.value:
-                _apply_buy(db, user, order.ticker, order.quantity, price, order.id)
+                _apply_buy(db, user, order.ticker, order.quantity, price, order.id, executed_at=fill_ts)
             else:
-                _apply_sell(db, user, order.ticker, order.quantity, price, order.id)
+                _apply_sell(db, user, order.ticker, order.quantity, price, order.id, executed_at=fill_ts)
             filled += 1
         except ValueError:
             order.status = OrderStatus.PENDING.value
