@@ -29,24 +29,34 @@ def ensure_schema_upgrades() -> None:
     `Base.metadata.create_all()` never alters existing tables, so older Postgres
     volumes may lack `transactions.portfolio_equity_after` and equity queries 500.
     """
-    insp = inspect(engine)
-    if "transactions" not in insp.get_table_names():
-        return
-    names = {c["name"] for c in insp.get_columns("transactions")}
     dialect = engine.dialect.name
-    stmts: list[str] = []
-    if "portfolio_equity_after" not in names:
-        if dialect == "postgresql":
-            stmts.append(
-                "ALTER TABLE transactions ADD COLUMN portfolio_equity_after DOUBLE PRECISION"
-            )
-        else:
-            stmts.append("ALTER TABLE transactions ADD COLUMN portfolio_equity_after REAL")
-    if not stmts:
-        return
-    with engine.begin() as conn:
-        for sql in stmts:
-            conn.execute(text(sql))
+    insp = inspect(engine)
+
+    if "transactions" in insp.get_table_names():
+        names = {c["name"] for c in insp.get_columns("transactions")}
+        stmts: list[str] = []
+        if "portfolio_equity_after" not in names:
+            if dialect == "postgresql":
+                stmts.append(
+                    "ALTER TABLE transactions ADD COLUMN portfolio_equity_after DOUBLE PRECISION"
+                )
+            else:
+                stmts.append("ALTER TABLE transactions ADD COLUMN portfolio_equity_after REAL")
+        if stmts:
+            with engine.begin() as conn:
+                for sql in stmts:
+                    conn.execute(text(sql))
+
+    insp_u = inspect(engine)
+    if "users" in insp_u.get_table_names():
+        ucols = {c["name"] for c in insp_u.get_columns("users")}
+        ustmts: list[str] = []
+        if "alpha_vantage_api_key" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN alpha_vantage_api_key VARCHAR(512)")
+        if ustmts:
+            with engine.begin() as conn:
+                for sql in ustmts:
+                    conn.execute(text(sql))
 
 
 def get_db():

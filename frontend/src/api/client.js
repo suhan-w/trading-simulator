@@ -64,7 +64,11 @@ async function request(path, options = {}) {
 
 export const api = {
   guest: () => request("/api/auth/guest", { method: "POST" }),
+  register: (body) => request("/api/auth/register", { method: "POST", body }),
+  login: (body) => request("/api/auth/login", { method: "POST", body }),
   me: () => request("/api/auth/me"),
+  updateAlphaVantageKey: (alpha_vantage_api_key) =>
+    request("/api/auth/alpha-vantage-key", { method: "PATCH", body: { alpha_vantage_api_key } }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
 
   quote: (ticker) => request(`/api/market/quote/${encodeURIComponent(ticker)}`),

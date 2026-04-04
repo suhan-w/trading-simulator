@@ -29,6 +29,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
+    alpha_vantage_api_key = Column(String(512), nullable=True)
     cash_balance = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 

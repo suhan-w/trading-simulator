@@ -1,9 +1,11 @@
 import { Route, Routes, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
+import AuthLanding from "./pages/AuthLanding";
 import Trading from "./pages/Trading";
 import PortfolioPage from "./pages/PortfolioPage";
 import PerformanceReport from "./pages/PerformanceReport";
+import Account from "./pages/Account";
 
 function GuestGate({ error, onRetry }) {
   return (
@@ -36,11 +38,7 @@ function Protected({ children }) {
     if (guestError) {
       return <GuestGate error={guestError} onRetry={() => refresh()} />;
     }
-    return (
-      <div className="min-h-screen flex items-center justify-center text-slate-400 bg-surface-900">
-        Starting…
-      </div>
-    );
+    return <AuthLanding />;
   }
   return children;
 }
@@ -59,6 +57,7 @@ export default function App() {
         <Route index element={<Trading />} />
         <Route path="portfolio" element={<PortfolioPage />} />
         <Route path="performance" element={<PerformanceReport />} />
+        <Route path="account" element={<Account />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -26,6 +26,9 @@ export default function Layout() {
             <NavLink to="/performance" className={linkClass}>
               Performance
             </NavLink>
+            <NavLink to="/account" className={linkClass}>
+              Account
+            </NavLink>
           </nav>
           <div className="flex items-center gap-3 text-sm flex-wrap justify-end">
             {user && (
@@ -48,8 +51,9 @@ export default function Layout() {
       </main>
       <footer className="border-t border-surface-700 py-6 text-center text-slate-500 text-sm px-4 space-y-2">
         <p className="text-slate-400 max-w-2xl mx-auto">
-          Execute trades here when your own strategy code says to — this app does not generate or host signals. Live
-          prices from Yahoo Finance (ASX .AX tickers, AUD). Paper trading for practice only; not financial advice.
+          Execute trades when your own strategy code says to — this app does not generate or host signals. Live quotes and
+          history use your Alpha Vantage API key (ASX .AX tickers, AUD). Paper trading for practice only; not financial
+          advice.
         </p>
       </footer>
     </div>

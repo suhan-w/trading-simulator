@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatAud } from "../formatAud";
@@ -13,7 +14,7 @@ function normalizeTickerInput(raw) {
 }
 
 export default function Trading() {
-  const { refreshMe } = useAuth();
+  const { refreshMe, user } = useAuth();
   const [ticker, setTicker] = useState("");
   const [side, setSide] = useState("buy");
   const [quantity, setQuantity] = useState("");
@@ -33,6 +34,11 @@ export default function Trading() {
   }, [loadPortfolio]);
 
   useEffect(() => {
+    if (!user?.has_alpha_vantage_key) {
+      setQuote(null);
+      setQuoteError(null);
+      return undefined;
+    }
     const norm = normalizeTickerInput(ticker);
     if (!norm || norm.length < 3) {
       setQuote(null);
@@ -50,7 +56,7 @@ export default function Trading() {
         });
     }, 450);
     return () => clearTimeout(id);
-  }, [ticker]);
+  }, [ticker, user?.has_alpha_vantage_key]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -126,9 +132,26 @@ export default function Trading() {
       <div>
         <h1 className="text-2xl font-semibold text-white tracking-tight">Trading</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Enter signals from your strategy and execute manually. Market orders only; prices from Yahoo Finance.
+          Enter signals from your strategy and execute manually. Market orders only; quotes use Alpha Vantage with your
+          API key.
         </p>
       </div>
+
+      {!user?.has_alpha_vantage_key && (
+        <div className="rounded-lg border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-amber-100/95 text-sm">
+          Add your{" "}
+          <a
+            href="https://www.alphavantage.co/support/#api-key"
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent underline"
+          >
+            Alpha Vantage API key
+          </a>{" "}
+          under <Link to="/account" className="text-accent font-medium hover:underline">Account</Link> to load live ASX
+          prices and place trades.
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 rounded-xl border border-surface-700 bg-surface-800/50 p-4">
         <div>
@@ -261,7 +284,7 @@ export default function Trading() {
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !user?.has_alpha_vantage_key}
           className="w-full py-3 rounded-lg bg-accent text-surface-900 font-semibold hover:bg-accent-dim disabled:opacity-50"
         >
           {submitting ? "Submitting…" : "Execute market order"}

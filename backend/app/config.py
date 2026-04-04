@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     initial_cash: float = Field(
         default=100_000.0, description="Starting virtual cash per user (AUD)"
     )
+    # Free Alpha Vantage tier: 5 API calls/minute — space calls per user key to avoid 429/throttle messages.
+    alpha_vantage_min_interval_sec: float = Field(
+        default=12.5,
+        description="Minimum seconds between Alpha Vantage requests per API key",
+    )
 
 
 settings = Settings()

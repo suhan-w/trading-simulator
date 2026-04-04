@@ -17,6 +17,10 @@ def hash_password(plain: str) -> str:
     return pwd_context.hash(_bcrypt_plain(plain))
 
 
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(_bcrypt_plain(plain), hashed)
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (

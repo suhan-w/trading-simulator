@@ -7,6 +7,13 @@ from app.services import equity as equity_svc
 from app.services import market_service
 
 
+def _alpha_vantage_key(user: User) -> str:
+    k = (user.alpha_vantage_api_key or "").strip()
+    if not k:
+        raise ValueError("Add your Alpha Vantage API key in Account settings.")
+    return k
+
+
 def _get_holding(db: Session, user_id: int, ticker: str) -> Holding | None:
     return (
         db.query(Holding)
@@ -141,7 +148,7 @@ def process_pending_orders_for_user(db: Session, user: User) -> int:
     filled = 0
     for order in pending:
         try:
-            quote = market_service.get_quote(order.ticker)
+            quote = market_service.get_quote(order.ticker, _alpha_vantage_key(user))
             price = quote["price"]
         except Exception:
             continue

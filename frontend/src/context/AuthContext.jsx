@@ -11,32 +11,28 @@ export function AuthProvider({ children }) {
   const refresh = useCallback(async () => {
     setGuestError(null);
     setLoading(true);
+    const hadToken = Boolean(getToken());
     try {
       if (!getToken()) {
-        const { access_token } = await api.guest();
-        setToken(access_token);
+        setUser(null);
+        return;
       }
-      try {
-        const u = await api.me();
-        setUser(u);
-      } catch {
-        setToken(null);
-        const { access_token } = await api.guest();
-        setToken(access_token);
-        const u = await api.me();
-        setUser(u);
-      }
+      const u = await api.me();
+      setUser(u);
     } catch (e) {
-      setUser(null);
       setToken(null);
-      setGuestError(e?.message || "Could not start session");
+      setUser(null);
+      const msg = e?.message || "Could not load session";
+      if (hadToken && !/401|Not authenticated|Invalid token/i.test(msg)) {
+        setGuestError(msg);
+      }
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   useEffect(() => {
@@ -47,13 +43,47 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("auth:logout", onLogout);
   }, []);
 
-  const logout = useCallback(async () => {
+  const startGuest = useCallback(async () => {
+    setGuestError(null);
+    setLoading(true);
+    try {
+      const { access_token } = await api.guest();
+      setToken(access_token);
+      const u = await api.me();
+      setUser(u);
+    } catch (e) {
+      setGuestError(e?.message || "Could not start guest session");
+      setUser(null);
+      setToken(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const register = useCallback(async (body) => {
+    setGuestError(null);
+    setToken(null);
+    const { access_token } = await api.register(body);
+    setToken(access_token);
+    const u = await api.me();
+    setUser(u);
+  }, []);
+
+  const login = useCallback(async (email, password) => {
+    setGuestError(null);
+    setToken(null);
+    const { access_token } = await api.login({ email, password });
+    setToken(access_token);
+    const u = await api.me();
+    setUser(u);
+  }, []);
+
+  const logout = useCallback(() => {
     setToken(null);
     setUser(null);
     setGuestError(null);
     api.logout().catch(() => {});
-    await refresh();
-  }, [refresh]);
+  }, []);
 
   const refreshMe = useCallback(async () => {
     if (!getToken()) return;
@@ -66,7 +96,20 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, guestError, logout, refresh, refreshMe }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        guestError,
+        logout,
+        refresh,
+        refreshMe,
+        startGuest,
+        register,
+        login,
+        setGuestError,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

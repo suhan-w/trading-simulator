@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from app.models import User
 
 
 class Token(BaseModel):
@@ -17,13 +19,33 @@ class UserOut(BaseModel):
     cash_balance: float
     created_at: datetime
     is_guest: bool = False
+    has_alpha_vantage_key: bool = False
 
-    @model_validator(mode="after")
-    def _derive_is_guest(self):
-        g = self.email.endswith("@guest.local")
-        if self.is_guest != g:
-            return self.model_copy(update={"is_guest": g})
-        return self
+
+def user_to_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        cash_balance=user.cash_balance,
+        created_at=user.created_at,
+        is_guest=user.email.endswith("@guest.local"),
+        has_alpha_vantage_key=bool((user.alpha_vantage_api_key or "").strip()),
+    )
+
+
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=72)
+    alpha_vantage_api_key: str = Field(..., min_length=8, max_length=512)
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=72)
+
+
+class AlphaVantageApiKeyIn(BaseModel):
+    alpha_vantage_api_key: str = Field(..., min_length=8, max_length=512)
 
 
 class OrderCreate(BaseModel):

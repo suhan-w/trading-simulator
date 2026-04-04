@@ -1,16 +1,24 @@
-"""Yahoo Finance helpers for ASX (.AX) quotes and OHLCV (benchmarks, reports)."""
+"""ASX market data via Alpha Vantage (user-supplied API key)."""
 
-from datetime import date, datetime
+from __future__ import annotations
+
+from datetime import date
 from typing import Any
 
-import yfinance as yf
+from app.services import alpha_vantage
+
+# SPDR S&P/ASX 200 Fund — liquid proxy for ASX 200 benchmark on Alpha Vantage (^AXJO not used on AV).
+BENCHMARK_SYMBOL_AV = "STW.AX"
+BENCHMARK_LABEL = "S&P/ASX 200 proxy (STW ETF)"
 
 
 def normalize_ticker(ticker: str) -> str:
-    """ASX symbols on Yahoo Finance use a .AX suffix (e.g. BHP.AX, CBA.AX). Index symbols (e.g. ^AXJO) unchanged."""
+    """ASX listings use .AX (e.g. BHP.AX). Legacy Yahoo-style ^AXJO maps to STW.AX for benchmarks."""
     t = ticker.strip().upper()
     if not t:
         return t
+    if t in ("^AXJO", "AXJO"):
+        return BENCHMARK_SYMBOL_AV
     if t.startswith("^"):
         return t
     if t.endswith(".AX"):
@@ -20,92 +28,62 @@ def normalize_ticker(ticker: str) -> str:
     return f"{t}.AX"
 
 
-def get_quote(ticker: str) -> dict[str, Any]:
+def to_alpha_vantage_symbol(normalized: str) -> str:
+    """Resolve symbol for Alpha Vantage GLOBAL_QUOTE / time series."""
+    if normalized.startswith("^"):
+        raise ValueError(
+            f"Index symbol {normalized} is not supported. Use ASX tickers with .AX "
+            f"(benchmark in reports uses {BENCHMARK_SYMBOL_AV})."
+        )
+    return normalized
+
+
+def get_quote(ticker: str, api_key: str) -> dict[str, Any]:
     t = normalize_ticker(ticker)
-    stock = yf.Ticker(t)
-    info = stock.info or {}
-    price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get(
-        "previousClose"
-    )
-    if price is None:
-        hist = stock.history(period="5d")
-        if hist is not None and not hist.empty:
-            price = float(hist["Close"].iloc[-1])
-    if price is None:
-        raise ValueError(f"Could not fetch price for {t}")
-    name = info.get("shortName") or info.get("longName")
-    currency = info.get("currency") or "AUD"
+    sym = to_alpha_vantage_symbol(t)
+    q = alpha_vantage.global_quote(api_key, sym)
     return {
-        "ticker": t,
-        "price": float(price),
-        "name": name,
-        "currency": currency,
+        "ticker": sym,
+        "price": q["price"],
+        "name": q.get("name"),
+        "currency": "AUD",
     }
 
 
-def get_ohlcv(ticker: str, period: str = "3mo") -> list[dict[str, Any]]:
-    t = normalize_ticker(ticker) if not ticker.startswith("^") else ticker
-    stock = yf.Ticker(t)
-    if period == "1w":
-        hist = stock.history(period="5d", interval="1d")
-    elif period == "1m":
-        hist = stock.history(period="1mo", interval="1d")
-    elif period == "3m":
-        hist = stock.history(period="3mo", interval="1d")
-    elif period == "1y":
-        hist = stock.history(period="1y", interval="1d")
-    elif period == "1d":
-        hist = stock.history(period="1d", interval="5m")
-    elif period == "5d":
-        hist = stock.history(period="5d", interval="15m")
-    else:
-        hist = stock.history(period=period, interval="1d")
-    if hist is None or hist.empty:
-        return []
-    out = []
-    for idx, row in hist.iterrows():
-        ts = idx
-        if hasattr(ts, "hour"):
-            time_str = ts.strftime("%Y-%m-%dT%H:%M:%S")
-        elif hasattr(ts, "strftime"):
-            time_str = ts.strftime("%Y-%m-%d")
-        else:
-            time_str = str(ts)[:10]
-        out.append(
-            {
-                "time": time_str,
-                "open": float(row["Open"]),
-                "high": float(row["High"]),
-                "low": float(row["Low"]),
-                "close": float(row["Close"]),
-                "volume": float(row["Volume"]),
-            }
-        )
-    return out
-
-
-def benchmark_closes_daily(symbol: str, start: date, end: date) -> list[dict[str, Any]]:
-    """Daily adjusted close for benchmark index (e.g. ^AXJO), sorted by date."""
-    stock = yf.Ticker(symbol)
-    hist = stock.history(start=start.isoformat(), end=(end.isoformat()), interval="1d", auto_adjust=True)
-    if hist is None or hist.empty:
-        return []
-    rows = []
-    for idx, row in hist.iterrows():
-        d = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
-        rows.append({"date": d, "close": float(row["Close"])})
+def _series_in_range(
+    series: dict[str, float],
+    start: date,
+    end: date,
+) -> list[tuple[str, float]]:
+    """Sorted (date_str, close) where start <= date <= end."""
+    start_s = start.isoformat()
+    end_s = end.isoformat()
+    rows: list[tuple[str, float]] = []
+    for d, close in series.items():
+        if start_s <= d <= end_s:
+            rows.append((d, close))
+    rows.sort(key=lambda x: x[0])
     return rows
 
 
-def ticker_return_over_range(ticker: str, start: date, end: date) -> float | None:
-    """Total return % from first to last close in range (calendar)."""
-    t = normalize_ticker(ticker)
-    stock = yf.Ticker(t)
-    hist = stock.history(start=start.isoformat(), end=end.isoformat(), interval="1d", auto_adjust=True)
-    if hist is None or hist.empty or len(hist) < 2:
+def daily_series_for_symbol(ticker: str, api_key: str) -> dict[str, float]:
+    """Full adjusted-close map (one API call). Ticker normalized to .AX / benchmark proxy."""
+    sym = normalize_ticker(ticker)
+    if sym.startswith("^"):
+        sym = BENCHMARK_SYMBOL_AV
+    return alpha_vantage.daily_adjusted_close_series(api_key, sym)
+
+
+def return_pct_from_series(series: dict[str, float], start: date, end: date) -> float | None:
+    rows = _series_in_range(series, start, end)
+    if len(rows) < 2:
         return None
-    first = float(hist["Close"].iloc[0])
-    last = float(hist["Close"].iloc[-1])
+    first = rows[0][1]
+    last = rows[-1][1]
     if first <= 0:
         return None
     return round((last / first - 1) * 100, 3)
+
+
+def closes_daily_from_series(series: dict[str, float], start: date, end: date) -> list[dict[str, Any]]:
+    return [{"date": d, "close": c} for d, c in _series_in_range(series, start, end)]

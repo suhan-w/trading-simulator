@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { formatAud } from "../formatAud";
 
 export default function PortfolioPage() {
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -27,8 +30,20 @@ export default function PortfolioPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-white tracking-tight">Portfolio</h1>
-        <p className="text-slate-400 text-sm mt-1">Holdings marked to market (Yahoo Finance ASX), unrealised P/L in AUD.</p>
+        <p className="text-slate-400 text-sm mt-1">
+          Holdings marked to market via Alpha Vantage (your API key), unrealised P/L in AUD.
+        </p>
       </div>
+
+      {!user?.has_alpha_vantage_key && (
+        <p className="text-sm text-amber-200/90 rounded-lg border border-amber-800/50 bg-amber-950/25 px-4 py-3">
+          Without an API key, live prices are unavailable — add one under{" "}
+          <Link to="/account" className="text-accent underline">
+            Account
+          </Link>
+          .
+        </p>
+      )}
 
       {error && <p className="text-danger text-sm">{error}</p>}
 

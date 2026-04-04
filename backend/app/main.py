@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="ASX Paper Trading API", lifespan=lifespan)
+app = FastAPI(title="ASX Paper Trading API (Alpha Vantage)", lifespan=lifespan)
 
 # Browser dev servers on localhost / LAN; regex covers any port (Vite, etc.)
 _local_origin_regex = (

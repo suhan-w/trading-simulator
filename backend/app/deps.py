@@ -35,3 +35,13 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+def require_alpha_vantage_api_key(user: User) -> str:
+    key = (user.alpha_vantage_api_key or "").strip()
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Add your Alpha Vantage API key: register an account or update it under Account.",
+        )
+    return key

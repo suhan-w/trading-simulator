@@ -57,8 +57,9 @@ export default function PerformanceReport() {
       <div>
         <h1 className="text-2xl font-semibold text-white tracking-tight">Performance report</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Metrics and charts for your selected window. Win rate and best/worst trades use realised P/L on sells
-          (FIFO). Sharpe and drawdown use forward-filled daily portfolio value.
+          Metrics and charts for your selected window (Alpha Vantage daily history; benchmark is STW.AX as an ASX 200
+          proxy). Win rate and best/worst trades use realised P/L on sells (FIFO). Free-tier API keys are
+          rate-limited—reports with many tickers may take a minute.
         </p>
       </div>
 
