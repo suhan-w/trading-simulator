@@ -281,6 +281,54 @@ def build_performance_report(
                         }
                     )
 
+    daily_return_bars: list[dict[str, Any]] = []
+    for i in range(1, len(daily_pf)):
+        prev_eq = float(daily_pf[i - 1]["equity"])
+        cur_eq = float(daily_pf[i]["equity"])
+        d_str = daily_pf[i]["date"]
+        if prev_eq > 0:
+            daily_return_bars.append(
+                {"date": d_str, "return_pct": round((cur_eq - prev_eq) / prev_eq * 100, 4)}
+            )
+        else:
+            daily_return_bars.append({"date": d_str, "return_pct": 0.0})
+
+    cumulative_return_daily: list[dict[str, Any]] = []
+    if daily_pf:
+        e_start = float(daily_pf[0]["equity"])
+        for row in daily_pf:
+            eq = float(row["equity"])
+            cum = round((eq / e_start - 1) * 100, 4) if e_start > 0 else 0.0
+            cumulative_return_daily.append({"date": row["date"], "cumulative_return_pct": cum})
+
+    winning_sells = losing_sells = breakeven_sells = 0
+    for s in sells_in_range:
+        pnl = float(s["realized_pnl"])
+        if pnl > 0:
+            winning_sells += 1
+        elif pnl < 0:
+            losing_sells += 1
+        else:
+            breakeven_sells += 1
+
+    pnl_by_ticker: dict[str, float] = defaultdict(float)
+    for s in sells_in_range:
+        pnl_by_ticker[s["ticker"]] += float(s["realized_pnl"])
+    for h in data["holdings"]:
+        pnl_by_ticker[h["ticker"]] += float(h["unrealized_pnl"])
+    per_stock_pnl = [
+        {"ticker": t, "pnl": round(pnl_by_ticker[t], 2)}
+        for t in sorted(pnl_by_ticker.keys())
+    ]
+
+    drawdown_series: list[dict[str, Any]] = []
+    peak_eq = float(daily_pf[0]["equity"]) if daily_pf else 0.0
+    for row in daily_pf:
+        eq = float(row["equity"])
+        peak_eq = max(peak_eq, eq)
+        dd_pct = round((peak_eq - eq) / peak_eq * 100, 4) if peak_eq > 0 else 0.0
+        drawdown_series.append({"date": row["date"], "drawdown_pct": dd_pct})
+
     return {
         "start": start.isoformat(),
         "end": end.isoformat(),
@@ -301,4 +349,13 @@ def build_performance_report(
             "benchmark_label": market_service.BENCHMARK_LABEL,
         },
         "initial_equity": float(settings.initial_cash),
+        "daily_return_bars": daily_return_bars,
+        "cumulative_return_daily": cumulative_return_daily,
+        "win_rate_breakdown": {
+            "winning_sells": winning_sells,
+            "losing_sells": losing_sells,
+            "breakeven_sells": breakeven_sells,
+        },
+        "per_stock_pnl": per_stock_pnl,
+        "drawdown_series": drawdown_series,
     }

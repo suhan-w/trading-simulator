@@ -57,6 +57,13 @@ class OrderCreate(BaseModel):
     limit_price: Optional[float] = Field(None, gt=0)
 
 
+class Asx200IndexOut(BaseModel):
+    symbol: str
+    value: float
+    change_pct: Optional[float] = None
+    source: str = "yahoo"
+
+
 class MarketSessionOut(BaseModel):
     open: bool
     melbourne_time_iso: str
@@ -110,6 +117,16 @@ class EquityPoint(BaseModel):
     equity: float
 
 
+class EquityDailyPoint(BaseModel):
+    date: str
+    equity: float
+
+
+class SparklinePoint(BaseModel):
+    date: str
+    close: float
+
+
 class HoldingOut(BaseModel):
     ticker: str
     quantity: float
@@ -151,6 +168,32 @@ class TickerReturnRow(BaseModel):
     return_pct: float
 
 
+class DailyReturnBar(BaseModel):
+    date: str
+    return_pct: float
+
+
+class CumulativeReturnPoint(BaseModel):
+    date: str
+    cumulative_return_pct: float
+
+
+class WinRateBreakdown(BaseModel):
+    winning_sells: int
+    losing_sells: int
+    breakeven_sells: int
+
+
+class StockPnlBar(BaseModel):
+    ticker: str
+    pnl: float
+
+
+class DrawdownPoint(BaseModel):
+    date: str
+    drawdown_pct: float
+
+
 class TradeHighlight(BaseModel):
     ticker: str
     realized_pnl: float
@@ -186,3 +229,8 @@ class PerformanceReportOut(BaseModel):
     sell_count: int
     portfolio_vs_benchmark: BenchmarkSeriesOut
     initial_equity: float
+    daily_return_bars: list[DailyReturnBar]
+    cumulative_return_daily: list[CumulativeReturnPoint]
+    win_rate_breakdown: WinRateBreakdown
+    per_stock_pnl: list[StockPnlBar]
+    drawdown_series: list[DrawdownPoint]

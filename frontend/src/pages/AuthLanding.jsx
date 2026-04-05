@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-
 export default function AuthLanding() {
   const { startGuest, register, login } = useAuth();
   const [mode, setMode] = useState("login");
@@ -41,34 +40,41 @@ export default function AuthLanding() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-surface-900">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold text-white tracking-tight">Signal Trader</h1>
-          <p className="text-slate-400 text-sm mt-2">
-            ASX paper trading with live quotes from your{" "}
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-canvas font-sans text-ink">
+      <div className="w-full max-w-md space-y-6">
+        <div className="flex flex-col items-center text-center space-y-4">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-card bg-ink shadow-card">
+            <span className="text-sm font-bold tracking-tight text-white">CS</span>
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              <span className="text-ink">Cowrie</span>
+              <span className="text-gold">Shell</span>
+            </h1>
+            <p className="mt-1 text-sm text-muted">Paper trading · ASX · AUD</p>
+          </div>
+          <p className="text-sm text-muted leading-relaxed max-w-sm">
+            Live quotes with your{" "}
             <a
               href="https://www.alphavantage.co/support/#api-key"
               target="_blank"
               rel="noreferrer"
-              className="text-accent hover:underline"
+              className="font-semibold text-gold underline-offset-2 hover:underline"
             >
               Alpha Vantage
             </a>{" "}
-            API key.
+            key.
           </p>
         </div>
 
-        <div className="flex rounded-lg border border-surface-600 p-0.5 bg-surface-800/50">
+        <div className="flex gap-3 rounded-card bg-card p-1.5 shadow-card">
           <button
             type="button"
             onClick={() => {
               setMode("login");
               setError(null);
             }}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
-              mode === "login" ? "bg-surface-700 text-white" : "text-slate-400 hover:text-white"
-            }`}
+            className={`cs-btn-side ${mode === "login" ? "cs-btn-side-active" : ""}`}
           >
             Log in
           </button>
@@ -78,99 +84,91 @@ export default function AuthLanding() {
               setMode("register");
               setError(null);
             }}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
-              mode === "register" ? "bg-surface-700 text-white" : "text-slate-400 hover:text-white"
-            }`}
+            className={`cs-btn-side ${mode === "register" ? "cs-btn-side-active" : ""}`}
           >
             Register
           </button>
         </div>
 
         {mode === "register" ? (
-          <form onSubmit={onRegister} className="space-y-4 rounded-xl border border-surface-700 bg-surface-800/40 p-6">
+          <form onSubmit={onRegister} className="cs-card space-y-4 p-5">
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Email</label>
+              <label className="cs-label mb-2">Email</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface-900 border border-surface-600 text-white text-sm"
+                className="cs-input"
                 autoComplete="email"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Password (min 8 characters)</label>
+              <label className="cs-label mb-2">Password (min 8 characters)</label>
               <input
                 type="password"
                 required
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface-900 border border-surface-600 text-white text-sm"
+                className="cs-input"
                 autoComplete="new-password"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Alpha Vantage API key</label>
+              <label className="cs-label mb-2">Alpha Vantage API key</label>
               <input
                 type="password"
                 required
                 minLength={8}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your key from alphavantage.co"
-                className="w-full px-3 py-2 rounded-lg bg-surface-900 border border-surface-600 text-white text-sm font-mono placeholder:text-slate-600"
+                placeholder="From alphavantage.co"
+                className="cs-input-mono"
                 autoComplete="off"
               />
             </div>
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full py-3 rounded-lg bg-accent text-surface-900 font-semibold hover:bg-accent-dim disabled:opacity-50"
-            >
+            {error && <p className="text-sm font-mono font-semibold text-danger">{error}</p>}
+            <button type="submit" disabled={busy} className="cs-btn-buy w-full">
               {busy ? "Creating account…" : "Create account"}
             </button>
           </form>
         ) : (
-          <form onSubmit={onLogin} className="space-y-4 rounded-xl border border-surface-700 bg-surface-800/40 p-6">
+          <form onSubmit={onLogin} className="cs-card space-y-4 p-5">
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Email</label>
+              <label className="cs-label mb-2">Email</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface-900 border border-surface-600 text-white text-sm"
+                className="cs-input"
                 autoComplete="email"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Password</label>
+              <label className="cs-label mb-2">Password</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface-900 border border-surface-600 text-white text-sm"
+                className="cs-input"
                 autoComplete="current-password"
               />
             </div>
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full py-3 rounded-lg bg-accent text-surface-900 font-semibold hover:bg-accent-dim disabled:opacity-50"
-            >
+            {error && <p className="text-sm font-mono font-semibold text-danger">{error}</p>}
+            <button type="submit" disabled={busy} className="cs-btn-buy w-full">
               {busy ? "Signing in…" : "Log in"}
             </button>
           </form>
         )}
 
         <div className="relative text-center">
-          <span className="text-slate-600 text-xs px-2 bg-surface-900 relative z-[1]">or</span>
-          <div className="absolute left-0 right-0 top-1/2 h-px bg-surface-700 -z-0" />
+          <span className="relative z-[1] inline-flex items-center bg-canvas px-3 text-xs font-semibold uppercase tracking-wide text-muted">
+            or
+          </span>
+          <div className="absolute left-0 right-0 top-1/2 h-px bg-ink/10 -z-0" />
         </div>
 
         <div className="text-center">
@@ -178,10 +176,11 @@ export default function AuthLanding() {
             type="button"
             onClick={() => void startGuest()}
             disabled={busy}
-            className="text-sm text-slate-400 hover:text-white underline disabled:opacity-50"
+            className="text-sm font-semibold text-gold underline-offset-2 hover:underline disabled:opacity-40"
           >
-            Continue as guest (no live prices until you add an API key in Account)
+            Continue as guest
           </button>
+          <p className="mt-2 text-xs font-mono text-muted">Add an API key in Account for live prices.</p>
         </div>
       </div>
     </div>

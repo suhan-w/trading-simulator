@@ -72,9 +72,16 @@ export const api = {
   logout: () => request("/api/auth/logout", { method: "POST" }),
 
   marketSession: () => request("/api/market/session"),
+  asx200Index: () => request("/api/market/asx200-index"),
   quote: (ticker) => request(`/api/market/quote/${encodeURIComponent(ticker)}`),
   placeOrder: (body) => request("/api/orders", { method: "POST", body }),
   portfolio: () => request("/api/portfolio"),
+  equityDaily: (start, end) =>
+    request(
+      `/api/portfolio/equity-daily?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+    ),
+  holdingSparklines: (days = 90) =>
+    request(`/api/portfolio/holding-sparklines?days=${encodeURIComponent(days)}`),
 
   performanceReport: (start, end) =>
     request(`/api/performance/report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),

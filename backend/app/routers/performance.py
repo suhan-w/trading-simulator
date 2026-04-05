@@ -8,11 +8,16 @@ from app.deps import get_current_user
 from app.models import User
 from app.schemas import (
     BenchmarkSeriesOut,
+    CumulativeReturnPoint,
+    DailyReturnBar,
+    DrawdownPoint,
     EquityCurvePoint,
     PerformanceReportOut,
     ReturnPctPoint,
+    StockPnlBar,
     TickerReturnRow,
     TradeHighlight,
+    WinRateBreakdown,
 )
 from app.services.performance_service import build_performance_report
 
@@ -56,4 +61,9 @@ def performance_report(
         sell_count=raw["sell_count"],
         portfolio_vs_benchmark=bench,
         initial_equity=raw["initial_equity"],
+        daily_return_bars=[DailyReturnBar(**x) for x in raw["daily_return_bars"]],
+        cumulative_return_daily=[CumulativeReturnPoint(**x) for x in raw["cumulative_return_daily"]],
+        win_rate_breakdown=WinRateBreakdown(**raw["win_rate_breakdown"]),
+        per_stock_pnl=[StockPnlBar(**x) for x in raw["per_stock_pnl"]],
+        drawdown_series=[DrawdownPoint(**x) for x in raw["drawdown_series"]],
     )

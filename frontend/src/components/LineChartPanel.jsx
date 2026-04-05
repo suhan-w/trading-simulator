@@ -1,34 +1,35 @@
 import { createChart, ColorType } from "lightweight-charts";
 import { useEffect, useRef } from "react";
+import { TitleMark } from "./SectionHeading";
+import { isoOrDateToTime } from "../utils/chartTime";
+
+const BG = "#ffffff";
+const GOLD = "#c8963e";
+const FILL_TOP = "rgba(200, 150, 62, 0.28)";
+const FILL_BOTTOM = "rgba(200, 150, 62, 0.04)";
+const DANGER = "#c0392b";
+const DANGER_TOP = "rgba(192, 57, 43, 0.22)";
+const DANGER_BOTTOM = "rgba(192, 57, 43, 0.04)";
+const GRID = "rgba(17, 17, 17, 0.04)";
 
 const layoutOpts = {
   layout: {
-    background: { type: ColorType.Solid, color: "#121a22" },
-    textColor: "#94a3b8",
+    background: { type: ColorType.Solid, color: BG },
+    textColor: "#aaaaaa",
+    fontSize: 12,
+    fontFamily: "JetBrains Mono, ui-monospace, monospace",
   },
   grid: {
-    vertLines: { color: "#1a2430" },
-    horzLines: { color: "#1a2430" },
+    vertLines: { color: GRID },
+    horzLines: { color: GRID },
   },
-  rightPriceScale: { borderColor: "#1a2430" },
-  timeScale: { borderColor: "#1a2430", timeVisible: true, secondsVisible: false },
+  rightPriceScale: { borderColor: "rgba(17,17,17,0.06)" },
+  timeScale: { borderColor: "rgba(17,17,17,0.06)", timeVisible: true, secondsVisible: false },
 };
 
-function isoOrDateToTime(t) {
-  if (typeof t === "number" && !Number.isNaN(t)) return t;
-  const s = String(t);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const [y, m, d] = s.split("-").map(Number);
-    return Math.floor(Date.UTC(y, m - 1, d) / 1000);
-  }
-  const ms = new Date(s).getTime();
-  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
-}
-
 /** @param {{ time: string|number, value: number }[]} points */
-export function LineChartPanel({ title, points, color = "#22c55e", height = 240 }) {
+export function LineChartPanel({ title, points, height = 240, variant = "gold", embedded = false }) {
   const containerRef = useRef(null);
-  const chartRef = useRef(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -39,8 +40,12 @@ export function LineChartPanel({ title, points, color = "#22c55e", height = 240 
       width: el.clientWidth,
       height,
     });
-    chartRef.current = chart;
-    const series = chart.addLineSeries({ color, lineWidth: 2 });
+    const series = chart.addAreaSeries({
+      lineColor: GOLD,
+      topColor: FILL_TOP,
+      bottomColor: FILL_BOTTOM,
+      lineWidth: 2,
+    });
     series.setData(
       points.map((p) => ({
         time: isoOrDateToTime(p.time),
@@ -57,18 +62,32 @@ export function LineChartPanel({ title, points, color = "#22c55e", height = 240 
     return () => {
       ro.disconnect();
       chart.remove();
-      chartRef.current = null;
     };
-  }, [title, height, color, points]);
+  }, [title, height, points, variant]);
 
-  return (
-    <section className="rounded-xl border border-surface-700 bg-surface-800/40 p-4">
-      <h3 className="text-sm font-medium text-slate-300 mb-3">{title}</h3>
+  const body = (
+    <div className={embedded ? "px-3 pb-3 pt-0" : title ? "px-3 pb-3 pt-0" : "px-3 pb-3 pt-3"}>
       {!points?.length ? (
-        <p className="text-slate-500 text-sm py-8 text-center">No data for this range.</p>
+        <p className="py-10 text-center text-xs font-mono text-muted">No data for this range.</p>
       ) : (
         <div ref={containerRef} className="w-full" style={{ height }} />
       )}
+    </div>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <section className="cs-card overflow-hidden">
+      {title ? (
+        <div className="cs-card-header pb-2">
+          <div className="flex items-center gap-2.5">
+            <TitleMark />
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
+          </div>
+        </div>
+      ) : null}
+      {body}
     </section>
   );
 }
@@ -89,8 +108,17 @@ export function ComparisonChartPanel({ title, portfolio, benchmark, benchLabel, 
       width: el.clientWidth,
       height,
     });
-    const pSeries = chart.addLineSeries({ color: "#22c55e", lineWidth: 2, title: "Portfolio (norm.)" });
-    const bSeries = chart.addLineSeries({ color: "#38bdf8", lineWidth: 2, title: benchLabel || "Benchmark" });
+    const pSeries = chart.addAreaSeries({
+      lineColor: GOLD,
+      topColor: FILL_TOP,
+      bottomColor: FILL_BOTTOM,
+      lineWidth: 2,
+    });
+    const bSeries = chart.addLineSeries({
+      color: "#aaaaaa",
+      lineWidth: 2,
+      title: benchLabel || "Benchmark",
+    });
     pSeries.setData(portfolio.map((p) => ({ time: isoOrDateToTime(p.date), value: p.value })));
     bSeries.setData(benchmark.map((p) => ({ time: isoOrDateToTime(p.date), value: p.value })));
     chart.timeScale().fitContent();
@@ -109,24 +137,27 @@ export function ComparisonChartPanel({ title, portfolio, benchmark, benchLabel, 
   const empty = !portfolio?.length || !benchmark?.length;
 
   return (
-    <section className="rounded-xl border border-surface-700 bg-surface-800/40 p-4">
-      <h3 className="text-sm font-medium text-slate-300 mb-1">{title}</h3>
-      <p className="text-xs text-slate-500 mb-3">Indexed to 100 at first common date in range (total return).</p>
-      {empty ? (
-        <p className="text-slate-500 text-sm py-8 text-center">
-          Not enough overlapping history for portfolio and benchmark in this range.
+    <section className="cs-card overflow-hidden">
+      <div className="cs-card-header pb-2">
+        <div className="flex items-center gap-2.5">
+          <TitleMark />
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
+        </div>
+        <p className="mt-3 text-[11px] leading-snug text-muted font-mono">
+          Indexed to 100 at first common date — compare your strategy to the ASX 200 proxy (total return).
         </p>
-      ) : (
-        <div ref={containerRef} className="w-full" style={{ height }} />
-      )}
+      </div>
+      <div className="px-3 pb-3 pt-0">
+        {empty ? (
+          <p className="py-10 text-center text-xs font-mono text-muted">Not enough overlapping history in this range.</p>
+        ) : (
+          <div ref={containerRef} className="w-full" style={{ height }} />
+        )}
+      </div>
       {!empty && (
-        <div className="flex flex-wrap gap-4 mt-2 text-xs text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-0.5 bg-accent rounded" /> Portfolio
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-0.5 bg-sky-400 rounded" /> {benchLabel}
-          </span>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 px-5 pb-4 pt-0 text-[11px] font-mono">
+          <span className="font-semibold text-gold">Portfolio</span>
+          <span className="text-muted">{benchLabel}</span>
         </div>
       )}
     </section>

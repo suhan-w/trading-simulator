@@ -2,22 +2,17 @@ import { Route, Routes, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import AuthLanding from "./pages/AuthLanding";
-import Trading from "./pages/Trading";
 import PortfolioPage from "./pages/PortfolioPage";
 import PerformanceReport from "./pages/PerformanceReport";
 import Account from "./pages/Account";
 
 function GuestGate({ error, onRetry }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-surface-900">
-      <div className="max-w-md text-center space-y-6">
-        <h1 className="text-2xl font-semibold text-white">Could not connect</h1>
-        <p className="text-slate-400 text-sm">{error}</p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="px-6 py-3 rounded-lg bg-accent text-surface-900 font-semibold hover:bg-accent-dim"
-        >
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-canvas font-sans text-ink">
+      <div className="cs-card max-w-sm p-6 text-center space-y-4">
+        <h1 className="text-sm font-semibold text-ink">Could not connect</h1>
+        <p className="text-sm text-muted leading-relaxed">{error}</p>
+        <button type="button" onClick={onRetry} className="cs-btn-buy w-full">
           Retry
         </button>
       </div>
@@ -29,8 +24,8 @@ function Protected({ children }) {
   const { user, loading, guestError, refresh } = useAuth();
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-400 bg-surface-900">
-        Loading…
+      <div className="min-h-screen flex items-center justify-center bg-canvas font-sans">
+        <span className="text-sm font-medium text-muted">Loading…</span>
       </div>
     );
   }
@@ -54,8 +49,8 @@ export default function App() {
           </Protected>
         }
       >
-        <Route index element={<Trading />} />
-        <Route path="portfolio" element={<PortfolioPage />} />
+        <Route index element={<PortfolioPage />} />
+        <Route path="portfolio" element={<Navigate to="/" replace />} />
         <Route path="performance" element={<PerformanceReport />} />
         <Route path="account" element={<Account />} />
       </Route>

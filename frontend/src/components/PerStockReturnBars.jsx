@@ -1,7 +1,7 @@
 /** @param {{ ticker: string, return_pct: number }[]} rows */
 export default function PerStockReturnBars({ rows }) {
   if (!rows?.length) {
-    return <p className="text-slate-500 text-sm">No stocks with price history in this range.</p>;
+    return <p className="text-xs font-mono text-muted">No stocks with price history in this range.</p>;
   }
 
   const extent = Math.max(...rows.map((r) => Math.abs(r.return_pct)), 0.01);
@@ -14,27 +14,25 @@ export default function PerStockReturnBars({ rows }) {
         return (
           <div
             key={r.ticker}
-            className="grid grid-cols-[minmax(0,7rem)_1fr_4.5rem] gap-3 items-center"
+            className="grid grid-cols-[minmax(0,6.5rem)_1fr_4rem] gap-3 items-center sm:grid-cols-[minmax(0,7rem)_1fr_4.5rem]"
           >
-            <span className="font-mono text-xs text-white truncate" title={r.ticker}>
-              {r.ticker}
-            </span>
-            <div className="h-3 bg-surface-700 rounded-full overflow-hidden relative">
-              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-500/40 z-[1]" />
+            <span className="min-w-0 font-mono text-xs font-bold text-ink truncate tabular-nums">{r.ticker}</span>
+            <div className="h-2.5 rounded-sm bg-black/[0.04] overflow-hidden relative shadow-card-sm">
+              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-ink/10 z-[1]" />
               {positive ? (
                 <div
-                  className="absolute top-0 bottom-0 rounded-full bg-accent"
+                  className="absolute top-0 bottom-0 rounded-sm bg-profit"
                   style={{ left: "50%", width: `${w}%` }}
                 />
               ) : (
                 <div
-                  className="absolute top-0 bottom-0 rounded-full bg-danger"
+                  className="absolute top-0 bottom-0 rounded-sm bg-danger"
                   style={{ right: "50%", width: `${w}%` }}
                 />
               )}
             </div>
             <span
-              className={`font-mono text-xs text-right tabular-nums ${positive ? "text-accent" : "text-danger"}`}
+              className={`font-mono text-xs text-right tabular-nums font-bold ${positive ? "text-profit" : "text-danger"}`}
             >
               {r.return_pct > 0 ? "+" : ""}
               {Number(r.return_pct).toFixed(2)}%

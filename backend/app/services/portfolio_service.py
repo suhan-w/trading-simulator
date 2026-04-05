@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -88,3 +88,32 @@ def equity_history_points(db: Session, user: User) -> list[dict]:
         points.append({"time": now, "equity": cur})
 
     return points
+
+
+def _equity_ts(iso: str) -> datetime:
+    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+
+
+def forward_fill_equity_daily(
+    equity_points: list[dict],
+    start: date,
+    end: date,
+) -> list[dict[str, float | str]]:
+    """One row per calendar day: last known equity on or before that day (same logic as performance report)."""
+    if not equity_points:
+        return []
+    pts = sorted(equity_points, key=lambda x: _equity_ts(x["time"]))
+    daily: list[dict[str, float | str]] = []
+    idx = 0
+    last_eq = float(pts[0]["equity"])
+    while idx < len(pts) and _equity_ts(pts[idx]["time"]).date() < start:
+        last_eq = float(pts[idx]["equity"])
+        idx += 1
+    cur = start
+    while cur <= end:
+        while idx < len(pts) and _equity_ts(pts[idx]["time"]).date() <= cur:
+            last_eq = float(pts[idx]["equity"])
+            idx += 1
+        daily.append({"date": cur.isoformat(), "equity": last_eq})
+        cur += timedelta(days=1)
+    return daily

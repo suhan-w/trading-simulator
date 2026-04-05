@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import SectionHeading from "../components/SectionHeading";
 
 export default function Account() {
   const { user, refreshMe } = useAuth();
@@ -31,58 +32,58 @@ export default function Account() {
   }
 
   return (
-    <div className="max-w-lg mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-white tracking-tight">Account</h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Your Alpha Vantage key is stored with this account and used for every quote and chart request (subject to
-          Alpha Vantage rate limits).
-        </p>
-      </div>
+    <div className="max-w-lg mx-auto space-y-6 md:space-y-8">
+      <SectionHeading
+        title="Account"
+        subtitle="Your Alpha Vantage key is used for quotes and charts (subject to rate limits)."
+      />
 
-      <div className="rounded-xl border border-surface-700 bg-surface-800/40 p-6 space-y-4">
+      <div className="cs-card p-5 space-y-5">
         <div>
-          <div className="text-xs text-slate-500 uppercase tracking-wide">Signed in as</div>
-          <div className="font-mono text-slate-200 mt-1">{user?.email}</div>
+          <div className="cs-label mb-2">Signed in as</div>
+          <div className="font-mono text-sm text-ink tabular-nums font-semibold">{user?.email}</div>
         </div>
         <div>
-          <div className="text-xs text-slate-500 uppercase tracking-wide">Alpha Vantage</div>
-          <div className="mt-1 text-sm">
+          <div className="cs-label mb-2">Alpha Vantage</div>
+          <div className="text-sm font-mono">
             {user?.has_alpha_vantage_key ? (
-              <span className="text-accent">API key on file</span>
+              <span className="font-bold text-profit">API key on file</span>
             ) : (
-              <span className="text-amber-400">No key — add one below to fetch live ASX prices.</span>
+              <span className="text-muted">No key — add one below for live ASX prices.</span>
             )}
           </div>
         </div>
 
-        <form onSubmit={onSave} className="space-y-3 pt-2 border-t border-surface-700">
-          <label className="block text-sm text-slate-400">Update API key</label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={user?.has_alpha_vantage_key ? "Enter a new key to replace" : "Paste your API key"}
-            className="w-full px-3 py-2 rounded-lg bg-surface-900 border border-surface-600 text-white font-mono text-sm placeholder:text-slate-600"
-            autoComplete="off"
-          />
-          {message && <p className="text-sm text-accent">{message}</p>}
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <button
-            type="submit"
-            disabled={saving || !apiKey.trim()}
-            className="px-4 py-2 rounded-lg bg-accent text-surface-900 font-semibold hover:bg-accent-dim disabled:opacity-50"
-          >
+        <form onSubmit={onSave} className="space-y-4 border-t border-ink/8 pt-5">
+          <div>
+            <label className="cs-label mb-2">Update API key</label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={user?.has_alpha_vantage_key ? "Enter a new key to replace" : "Paste your API key"}
+              className="cs-input-mono"
+              autoComplete="off"
+            />
+          </div>
+          {message && <p className="text-sm font-mono font-bold text-profit">{message}</p>}
+          {error && <p className="text-sm font-mono font-semibold text-danger">{error}</p>}
+          <button type="submit" disabled={saving || !apiKey.trim()} className="cs-btn-buy w-full">
             {saving ? "Saving…" : "Save API key"}
           </button>
         </form>
 
-        <p className="text-xs text-slate-500">
-          Get a free key at{" "}
-          <a href="https://www.alphavantage.co/support/#api-key" className="text-accent hover:underline" target="_blank" rel="noreferrer">
+        <p className="text-xs leading-relaxed text-muted font-mono">
+          Free key:{" "}
+          <a
+            href="https://www.alphavantage.co/support/#api-key"
+            className="font-semibold text-gold underline-offset-2 hover:underline"
+            target="_blank"
+            rel="noreferrer"
+          >
             alphavantage.co
           </a>
-          . Free tier is rate-limited (about 5 calls/minute); large performance reports may take a while.
+          . ~5 calls/min; large reports may be slow.
         </p>
       </div>
     </div>

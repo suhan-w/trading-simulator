@@ -11,9 +11,19 @@ export function AuthProvider({ children }) {
   const refresh = useCallback(async () => {
     setGuestError(null);
     setLoading(true);
-    const hadToken = Boolean(getToken());
+    let hadToken = false;
     try {
-      if (!getToken()) {
+      let token;
+      try {
+        token = getToken();
+      } catch {
+        setUser(null);
+        setToken(null);
+        setGuestError("This site needs local storage enabled to keep you signed in.");
+        return;
+      }
+      hadToken = Boolean(token);
+      if (!token) {
         setUser(null);
         return;
       }
