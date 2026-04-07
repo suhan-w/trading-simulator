@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -83,3 +83,27 @@ class Transaction(Base):
     portfolio_equity_after = Column(Float, nullable=True)
 
     user = relationship("User", back_populates="transactions")
+
+
+class AvEodCache(Base):
+    """Cached TIME_SERIES_DAILY (full) JSON per symbol per UTC calendar day — avoids duplicate AV calls."""
+
+    __tablename__ = "av_eod_cache"
+    __table_args__ = (UniqueConstraint("symbol", "cache_date", name="uq_av_eod_symbol_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(32), nullable=False, index=True)
+    cache_date = Column(Date, nullable=False, index=True)
+    series_json = Column(Text, nullable=False)
+
+
+class AvDailyUsage(Base):
+    """Alpha Vantage API calls counted per user per UTC calendar day."""
+
+    __tablename__ = "av_daily_usage"
+    __table_args__ = (UniqueConstraint("user_id", "usage_date", name="uq_av_daily_user_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    usage_date = Column(Date, nullable=False, index=True)
+    request_count = Column(Integer, nullable=False, default=0)

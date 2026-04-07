@@ -137,10 +137,6 @@ def build_performance_report(
     start: date,
     end: date,
 ) -> dict[str, Any]:
-    api_key = (user.alpha_vantage_api_key or "").strip()
-    if not api_key:
-        raise ValueError("Add your Alpha Vantage API key in Account settings.")
-
     if start > end:
         start, end = end, start
 
@@ -229,32 +225,31 @@ def build_performance_report(
     for h in data["holdings"]:
         tickers.add(h["ticker"])
 
-    series_cache: dict[str, dict[str, float]] = {}
+    series_cache: dict[str, dict[str, float] | None] = {}
 
-    def get_series_for_ticker(sym: str) -> dict[str, float]:
+    def get_series_for_ticker(sym: str) -> dict[str, float] | None:
         norm = market_service.normalize_ticker(sym)
         if norm.startswith("^"):
             norm = market_service.BENCHMARK_SYMBOL_AV
         if norm not in series_cache:
-            series_cache[norm] = market_service.daily_series_for_symbol(norm, api_key)
+            series_cache[norm] = market_service.daily_series_for_symbol_cached(db, norm)
         return series_cache[norm]
 
     per_stock: list[dict[str, Any]] = []
     end_fetch = end + timedelta(days=1)
     for sym in sorted(tickers):
-        try:
-            s = get_series_for_ticker(sym)
-            r = market_service.return_pct_from_series(s, start, end_fetch)
-        except ValueError:
-            r = None
+        s = get_series_for_ticker(sym)
+        if s is None:
+            continue
+        r = market_service.return_pct_from_series(s, start, end_fetch)
         if r is not None:
             per_stock.append({"ticker": sym, "return_pct": r})
 
     bench_rows: list[dict[str, Any]] = []
-    try:
-        bs = get_series_for_ticker(market_service.BENCHMARK_SYMBOL_AV)
+    bs = get_series_for_ticker(market_service.BENCHMARK_SYMBOL_AV)
+    if bs is not None:
         bench_rows = market_service.closes_daily_from_series(bs, start, end_fetch)
-    except ValueError:
+    else:
         bench_rows = []
     portfolio_norm: list[dict[str, Any]] = []
     benchmark_norm: list[dict[str, Any]] = []

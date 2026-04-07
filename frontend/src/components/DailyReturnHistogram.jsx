@@ -1,6 +1,5 @@
 import { createChart, ColorType } from "lightweight-charts";
 import { useEffect, useRef } from "react";
-import { TitleMark } from "./SectionHeading";
 import { isoOrDateToTime } from "../utils/chartTime";
 
 const BG = "#ffffff";
@@ -62,10 +61,7 @@ export default function DailyReturnHistogram({ title, rows, height = 220 }) {
   return (
     <section className="cs-card overflow-hidden">
       <div className="cs-card-header pb-2">
-        <div className="flex items-center gap-2.5">
-          <TitleMark />
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-        </div>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
       </div>
       <div className="px-3 pb-3 pt-0">
         {!rows?.length ? (

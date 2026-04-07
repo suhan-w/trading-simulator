@@ -1,11 +1,14 @@
-"""ASX market data via Alpha Vantage (user-supplied API key)."""
+"""ASX market data via Alpha Vantage (user-supplied API key, EOD cached)."""
 
 from __future__ import annotations
 
 from datetime import date
 from typing import Any
 
-from app.services import alpha_vantage
+from sqlalchemy.orm import Session
+
+from app.models import User
+from app.services import av_cache_service
 
 # SPDR S&P/ASX 200 Fund — liquid proxy for ASX 200 benchmark on Alpha Vantage (^AXJO not used on AV).
 BENCHMARK_SYMBOL_AV = "STW.AX"
@@ -38,16 +41,17 @@ def to_alpha_vantage_symbol(normalized: str) -> str:
     return normalized
 
 
-def get_quote(ticker: str, api_key: str) -> dict[str, Any]:
-    t = normalize_ticker(ticker)
-    sym = to_alpha_vantage_symbol(t)
-    q = alpha_vantage.global_quote(api_key, sym)
-    return {
-        "ticker": sym,
-        "price": q["price"],
-        "name": q.get("name"),
-        "currency": "AUD",
-    }
+def get_eod_quote(db: Session, user: User, ticker: str) -> dict[str, Any]:
+    """Latest daily close from DB cache or Alpha Vantage (counts toward daily limit)."""
+    return av_cache_service.get_eod_quote_dict(db, user, ticker)
+
+
+def close_series_latest_cached(db: Session, ticker: str) -> dict[str, float] | None:
+    """Adjusted-close map from latest cache row, or None. No network."""
+    bars = av_cache_service.get_bars_latest_cached(db, ticker)
+    if not bars:
+        return None
+    return av_cache_service.bars_to_close_map(bars)
 
 
 def _series_in_range(
@@ -66,12 +70,12 @@ def _series_in_range(
     return rows
 
 
-def daily_series_for_symbol(ticker: str, api_key: str) -> dict[str, float]:
-    """Full adjusted-close map (one API call). Ticker normalized to .AX / benchmark proxy."""
+def daily_series_for_symbol_cached(db: Session, ticker: str) -> dict[str, float] | None:
+    """Full close map from latest DB cache. No API call."""
     sym = normalize_ticker(ticker)
     if sym.startswith("^"):
         sym = BENCHMARK_SYMBOL_AV
-    return alpha_vantage.daily_adjusted_close_series(api_key, sym)
+    return close_series_latest_cached(db, sym)
 
 
 def return_pct_from_series(series: dict[str, float], start: date, end: date) -> float | None:

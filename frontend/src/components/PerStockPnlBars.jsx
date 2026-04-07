@@ -1,15 +1,11 @@
 import { formatAud } from "../formatAud";
-import { TitleMark } from "./SectionHeading";
 
 /** @param {{ ticker: string, pnl: number }[]} rows */
 export default function PerStockPnlBars({ title, rows }) {
   if (!rows?.length) {
     return (
       <section className="cs-card p-5">
-        <div className="flex items-center gap-2.5">
-          <TitleMark />
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-        </div>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
         <p className="mt-4 text-xs font-mono text-muted">No stock P&amp;L in this range.</p>
       </section>
     );
@@ -19,10 +15,7 @@ export default function PerStockPnlBars({ title, rows }) {
 
   return (
     <section className="cs-card p-5">
-      <div className="flex items-center gap-2.5">
-        <TitleMark />
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-      </div>
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
       <p className="mt-2 text-[11px] font-mono text-muted leading-snug">
         Realised P/L on sells in range plus current unrealised per ticker.
       </p>

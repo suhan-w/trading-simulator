@@ -18,13 +18,6 @@ def _require_market_open() -> None:
         raise ValueError(MARKET_CLOSED_MSG)
 
 
-def _alpha_vantage_key(user: User) -> str:
-    k = (user.alpha_vantage_api_key or "").strip()
-    if not k:
-        raise ValueError("Add your Alpha Vantage API key in Account settings.")
-    return k
-
-
 def _get_holding(db: Session, user_id: int, ticker: str) -> Holding | None:
     return (
         db.query(Holding)
@@ -109,9 +102,8 @@ def _apply_sell(
 
 
 def execute_market_order(db: Session, user: User, body) -> Order:
-    _require_market_open()
     ticker = market_service.normalize_ticker(body.ticker)
-    quote = market_service.get_quote(ticker, _alpha_vantage_key(user))
+    quote = market_service.get_eod_quote(db, user, ticker)
     price = quote["price"]
     total = body.quantity * price
     if body.side == OrderSide.BUY.value:
@@ -185,7 +177,7 @@ def process_pending_orders_for_user(db: Session, user: User) -> int:
     filled = 0
     for order in pending:
         try:
-            quote = market_service.get_quote(order.ticker, _alpha_vantage_key(user))
+            quote = market_service.get_eod_quote(db, user, order.ticker)
             price = quote["price"]
         except Exception:
             continue

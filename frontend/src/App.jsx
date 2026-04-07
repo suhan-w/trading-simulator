@@ -3,6 +3,7 @@ import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import AuthLanding from "./pages/AuthLanding";
 import PortfolioPage from "./pages/PortfolioPage";
+import TradePage from "./pages/TradePage";
 import PerformanceReport from "./pages/PerformanceReport";
 import Account from "./pages/Account";
 
@@ -51,6 +52,7 @@ export default function App() {
       >
         <Route index element={<PortfolioPage />} />
         <Route path="portfolio" element={<Navigate to="/" replace />} />
+        <Route path="trade" element={<TradePage />} />
         <Route path="performance" element={<PerformanceReport />} />
         <Route path="account" element={<Account />} />
       </Route>

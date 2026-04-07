@@ -1,6 +1,5 @@
 import { createChart, ColorType } from "lightweight-charts";
 import { useEffect, useRef } from "react";
-import { TitleMark } from "./SectionHeading";
 import { isoOrDateToTime } from "../utils/chartTime";
 
 const BG = "#ffffff";
@@ -81,10 +80,7 @@ export function LineChartPanel({ title, points, height = 240, variant = "gold", 
     <section className="cs-card overflow-hidden">
       {title ? (
         <div className="cs-card-header pb-2">
-          <div className="flex items-center gap-2.5">
-            <TitleMark />
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-          </div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
         </div>
       ) : null}
       {body}
@@ -139,10 +135,7 @@ export function ComparisonChartPanel({ title, portfolio, benchmark, benchLabel, 
   return (
     <section className="cs-card overflow-hidden">
       <div className="cs-card-header pb-2">
-        <div className="flex items-center gap-2.5">
-          <TitleMark />
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-        </div>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
         <p className="mt-3 text-[11px] leading-snug text-muted font-mono">
           Indexed to 100 at first common date — compare your strategy to the ASX 200 proxy (total return).
         </p>

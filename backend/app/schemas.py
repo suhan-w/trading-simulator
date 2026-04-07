@@ -1,8 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from sqlalchemy.orm import Session
+
+from app.config import settings
 from app.models import Order, User
 from app.services import melbourne_asx
 
@@ -21,9 +24,17 @@ class UserOut(BaseModel):
     created_at: datetime
     is_guest: bool = False
     has_alpha_vantage_key: bool = False
+    alpha_vantage_requests_used_today: int = 0
+    alpha_vantage_daily_limit: int = 25
 
 
-def user_to_out(user: User) -> UserOut:
+def user_to_out(user: User, db: Session | None = None) -> UserOut:
+    used = 0
+    limit = settings.alpha_vantage_daily_request_limit
+    if db is not None:
+        from app.services import av_cache_service
+
+        used = av_cache_service.get_usage_today(db, user.id)
     return UserOut(
         id=user.id,
         email=user.email,
@@ -31,6 +42,8 @@ def user_to_out(user: User) -> UserOut:
         created_at=user.created_at,
         is_guest=user.email.endswith("@guest.local"),
         has_alpha_vantage_key=bool((user.alpha_vantage_api_key or "").strip()),
+        alpha_vantage_requests_used_today=used,
+        alpha_vantage_daily_limit=limit,
     )
 
 
@@ -151,6 +164,33 @@ class QuoteOut(BaseModel):
     price: float
     currency: str
     name: Optional[str] = None
+    as_of_date: str
+    delayed_eod: bool = True
+
+
+class BacktestIn(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=32)
+    start: date
+    end: date
+    strategy: str = Field(..., pattern="^(ma_crossover|rsi_mean_reversion|buy_hold)$")
+
+
+class BacktestOut(BaseModel):
+    total_return_pct: float
+    win_rate_pct: Optional[float] = None
+    max_drawdown_pct: float
+    sharpe_ratio: Optional[float] = None
+    trade_count: int
+    strategy: str
+
+
+class OhlcvBarOut(BaseModel):
+    date: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
 
 
 class EquityCurvePoint(BaseModel):

@@ -35,7 +35,7 @@ export default function Account() {
     <div className="max-w-lg mx-auto space-y-6 md:space-y-8">
       <SectionHeading
         title="Account"
-        subtitle="Your Alpha Vantage key is used for quotes and charts (subject to rate limits)."
+        subtitle="Free tier: 25 API calls per calendar day. Each ticker is fetched once per day and cached — reuse is free."
       />
 
       <div className="cs-card p-5 space-y-5">
@@ -49,7 +49,7 @@ export default function Account() {
             {user?.has_alpha_vantage_key ? (
               <span className="font-bold text-profit">API key on file</span>
             ) : (
-              <span className="text-muted">No key — add one below for live ASX prices.</span>
+              <span className="text-muted">No key — add one below for EOD ASX prices.</span>
             )}
           </div>
         </div>

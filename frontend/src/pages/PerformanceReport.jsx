@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import DailyReturnHistogram from "../components/DailyReturnHistogram";
 import { ComparisonChartPanel, LineChartPanel } from "../components/LineChartPanel";
 import PerStockPnlBars from "../components/PerStockPnlBars";
-import SectionHeading, { TitleMark } from "../components/SectionHeading";
+import SectionHeading from "../components/SectionHeading";
 import WinRateDonut from "../components/WinRateDonut";
 
 function defaultRange() {
@@ -67,16 +67,13 @@ export default function PerformanceReport() {
     <div className="space-y-6 md:space-y-8">
       <SectionHeading
         title="Performance"
-        subtitle="Strategy evaluation vs ASX 200 proxy (STW.AX). FIFO realised P/L on sells. Free tier keys are rate-limited."
+        subtitle="Strategy evaluation from your recorded trades and portfolio equity only — no live Alpha Vantage calls. Benchmark lines use cached EOD data when available."
       />
 
       <section className="cs-card overflow-hidden">
         <div className="cs-card-header pb-4 border-b border-ink/[0.06]">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2.5">
-              <TitleMark />
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Date range filter</h2>
-            </div>
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Date range filter</h2>
             {loading && <span className="text-xs font-mono text-muted">Loading…</span>}
           </div>
           <p className="mt-3 text-xs font-mono text-muted leading-relaxed max-w-3xl">

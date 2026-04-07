@@ -14,7 +14,7 @@ def build_portfolio(db: Session, user: User) -> dict:
     db.refresh(user)
     holdings_rows = db.query(Holding).filter(Holding.user_id == user.id).all()
     tickers = [h.ticker for h in holdings_rows]
-    prices = equity_svc.price_map_for_tickers(tickers, user.alpha_vantage_api_key)
+    prices = equity_svc.price_map_for_tickers(db, user, tickers)
 
     holdings_out = []
     total_unrealized = 0.0

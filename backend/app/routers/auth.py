@@ -72,8 +72,11 @@ def guest_session(db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user_to_out(user)
+def me(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return user_to_out(user, db)
 
 
 @router.patch("/alpha-vantage-key", response_model=UserOut)
@@ -85,7 +88,7 @@ def update_alpha_vantage_key(
     user.alpha_vantage_api_key = body.alpha_vantage_api_key.strip()
     db.commit()
     db.refresh(user)
-    return user_to_out(user)
+    return user_to_out(user, db)
 
 
 @router.post("/logout")

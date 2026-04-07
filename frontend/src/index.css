@@ -80,7 +80,7 @@
 
   .portfolio-layout {
     display: grid;
-    grid-template-columns: 60fr 40fr;
+    grid-template-columns: 40fr 60fr;
     gap: 24px;
     align-items: start;
   }
@@ -89,10 +89,16 @@
     min-width: 0;
   }
 
-  .portfolio-layout aside {
-    position: sticky;
-    top: 24px;
-    align-self: start;
+  /* Wider column = historical chart / OHLCV; narrower = execute trade form */
+  .trade-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+    gap: 24px;
+    align-items: stretch;
+  }
+
+  .trade-layout > * {
+    min-width: 0;
   }
 
   .performance-layout {

@@ -71,6 +71,9 @@ export default function Layout() {
               <NavLink to="/" end className={navPill}>
                 Portfolio
               </NavLink>
+              <NavLink to="/trade" className={navPill}>
+                Trade
+              </NavLink>
               <NavLink to="/performance" className={navPill}>
                 Performance
               </NavLink>
@@ -87,6 +90,9 @@ export default function Layout() {
           <nav className="flex sm:hidden items-center gap-1 overflow-x-auto pb-3 -mt-1">
             <NavLink to="/" end className={navPill}>
               Portfolio
+            </NavLink>
+            <NavLink to="/trade" className={navPill}>
+              Trade
             </NavLink>
             <NavLink to="/performance" className={navPill}>
               Performance
@@ -119,7 +125,8 @@ export default function Layout() {
         <p className="text-center text-xs leading-relaxed text-muted max-w-3xl mx-auto">
           <span className="font-semibold text-ink">Cowrie</span>
           <span className="font-semibold text-gold">Shell</span> · ASX Mon–Fri 10:00–16:00 Melbourne (AEST/AEDT);
-          Victorian holidays closed. Quotes via your Alpha Vantage key. Paper trading only — not financial advice.
+          Victorian holidays closed. End-of-day prices via Alpha Vantage (free tier: 25 requests/day; cached per symbol).
+          Paper trading only — not financial advice.
         </p>
       </footer>
     </div>

@@ -17,6 +17,10 @@ class Settings(BaseSettings):
         default=12.5,
         description="Minimum seconds between Alpha Vantage requests per API key",
     )
+    alpha_vantage_daily_request_limit: int = Field(
+        default=25,
+        description="Alpha Vantage free tier: max API calls per calendar day per user key (cached tickers reuse DB)",
+    )
 
 
 settings = Settings()

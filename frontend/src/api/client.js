@@ -82,6 +82,10 @@ export const api = {
     ),
   holdingSparklines: (days = 90) =>
     request(`/api/portfolio/holding-sparklines?days=${encodeURIComponent(days)}`),
+  ohlcvRange: (ticker, start, end) =>
+    request(
+      `/api/portfolio/ohlcv/${encodeURIComponent(ticker)}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+    ),
 
   performanceReport: (start, end) =>
     request(`/api/performance/report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),

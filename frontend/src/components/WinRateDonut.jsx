@@ -1,5 +1,3 @@
-import { TitleMark } from "./SectionHeading";
-
 /** @param {{ winning_sells: number, losing_sells: number, breakeven_sells: number }} breakdown */
 export default function WinRateDonut({ title, breakdown }) {
   const { winning_sells: w, losing_sells: l, breakeven_sells: b } = breakdown;
@@ -7,10 +5,7 @@ export default function WinRateDonut({ title, breakdown }) {
 
   return (
     <section className="cs-card overflow-hidden p-5">
-      <div className="flex items-center gap-2.5">
-        <TitleMark />
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-      </div>
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
       {t === 0 ? (
         <p className="mt-6 text-center text-xs font-mono text-muted">No sells in this range.</p>
       ) : (

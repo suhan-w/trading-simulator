@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, require_alpha_vantage_api_key
 from app.models import User
-from app.schemas import EquityDailyPoint, EquityPoint, HoldingOut, PortfolioOut, SparklinePoint
-from app.services import alpha_vantage, market_service
+from app.schemas import EquityDailyPoint, EquityPoint, HoldingOut, OhlcvBarOut, PortfolioOut, SparklinePoint
+from app.services import av_cache_service, market_service
 from app.services.portfolio_service import (
     build_portfolio,
     equity_history_points,
@@ -65,17 +65,51 @@ def get_holding_sparklines(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    api_key = require_alpha_vantage_api_key(user)
+    require_alpha_vantage_api_key(user)
     data = build_portfolio(db, user)
     db.commit()
     out: dict[str, list[SparklinePoint]] = {}
     for h in data["holdings"]:
         t = h["ticker"]
-        sym = market_service.normalize_ticker(t)
-        try:
-            rows = alpha_vantage.compact_daily_closes(api_key, sym)
-            tail = rows[-days:] if len(rows) > days else rows
-            out[t] = [SparklinePoint(date=d, close=c) for d, c in tail]
-        except ValueError:
+        bars = av_cache_service.get_bars_latest_cached(db, t)
+        if not bars:
             out[t] = []
+            continue
+        sorted_dates = sorted(bars.keys())
+        tail = sorted_dates[-days:] if len(sorted_dates) > days else sorted_dates
+        out[t] = [SparklinePoint(date=d, close=float(bars[d]["close"])) for d in tail]
     return out
+
+
+@router.get("/ohlcv/{ticker}", response_model=list[OhlcvBarOut])
+def get_ohlcv_range(
+    ticker: str,
+    start: date = Query(..., description="Range start (inclusive)"),
+    end: date = Query(..., description="Range end (inclusive)"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_alpha_vantage_api_key(user)
+    if start > end:
+        start, end = end, start
+    try:
+        bars, _ = av_cache_service.get_or_fetch_ohlcv(db, user, ticker)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    start_s, end_s = start.isoformat(), end.isoformat()
+    rows: list[OhlcvBarOut] = []
+    for d in sorted(bars.keys()):
+        if start_s <= d <= end_s:
+            b = bars[d]
+            rows.append(
+                OhlcvBarOut(
+                    date=d,
+                    open=b["open"],
+                    high=b["high"],
+                    low=b["low"],
+                    close=b["close"],
+                    volume=b.get("volume", 0),
+                )
+            )
+    db.commit()
+    return rows
