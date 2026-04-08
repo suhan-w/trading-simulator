@@ -110,7 +110,11 @@ def build_market_session_payload() -> dict[str, Any]:
 
     next_open: datetime | None = None
     seconds_until: int | None = None
-    if not open_:
+    seconds_until_close: int | None = None
+    if open_:
+        session_close = datetime.combine(m.date(), SESSION_END, tzinfo=MELBOURNE)
+        seconds_until_close = max(0, int((session_close - m).total_seconds()))
+    else:
         next_open = next_session_open(m)
         seconds_until = max(0, int((next_open - m).total_seconds()))
 
@@ -129,6 +133,7 @@ def build_market_session_payload() -> dict[str, Any]:
         "closed_reason": reason,
         "holiday_name": extra,
         "seconds_until_open": seconds_until,
+        "seconds_until_close": seconds_until_close,
         "next_open_melbourne_iso": next_open.isoformat() if next_open else None,
         "next_open_display": next_display,
     }

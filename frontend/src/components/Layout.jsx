@@ -6,7 +6,7 @@ import BrandMark from "./BrandMark";
 import MelbourneMarketStatus from "./MelbourneMarketStatus";
 function navPill({ isActive }) {
   return [
-    "whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+    "whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold transition-colors",
     isActive ? "bg-ink text-white shadow-card-sm" : "text-muted hover:text-ink",
   ].join(" ");
 }

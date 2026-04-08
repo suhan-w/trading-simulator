@@ -79,9 +79,10 @@
   }
 
   .portfolio-layout {
+    --portfolio-layout-gap: 24px;
     display: grid;
-    grid-template-columns: 40fr 60fr;
-    gap: 24px;
+    grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+    gap: var(--portfolio-layout-gap);
     align-items: start;
   }
 
@@ -89,10 +90,32 @@
     min-width: 0;
   }
 
-  /* Wider column = historical chart / OHLCV; narrower = execute trade form */
+  /* Top-of-chart metrics: one row, four columns; gap matches column gutter */
+  .portfolio-metric-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--portfolio-layout-gap);
+    min-width: 0;
+  }
+
+  /* Narrow column (allocation + pie): stretches to align with chart column */
+  .portfolio-left-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--portfolio-layout-gap);
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  .portfolio-chart-cell {
+    align-self: start;
+    min-width: 0;
+  }
+
+  /* Wider column = historical chart / OHLCV + holdings; narrower = execute trade form */
   .trade-layout {
     display: grid;
-    grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+    grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
     gap: 24px;
     align-items: stretch;
   }

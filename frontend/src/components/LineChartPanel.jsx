@@ -27,24 +27,65 @@ const layoutOpts = {
 };
 
 /** @param {{ time: string|number, value: number }[]} points */
-export function LineChartPanel({ title, points, height = 240, variant = "gold", embedded = false }) {
+export function LineChartPanel({
+  title,
+  points,
+  height = 240,
+  variant = "gold",
+  embedded = false,
+  /** Hide axes & grid — sparkline-style area chart */
+  minimal = false,
+}) {
   const containerRef = useRef(null);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !points?.length) return undefined;
 
-    const chart = createChart(el, {
-      ...layoutOpts,
-      width: el.clientWidth,
-      height,
-    });
-    const series = chart.addAreaSeries({
-      lineColor: GOLD,
-      topColor: FILL_TOP,
-      bottomColor: FILL_BOTTOM,
-      lineWidth: 2,
-    });
+    const chartOptions = minimal
+      ? {
+          layout: {
+            background: { type: ColorType.Solid, color: BG },
+            textColor: "transparent",
+            fontSize: 1,
+            fontFamily: "system-ui, sans-serif",
+          },
+          grid: {
+            vertLines: { visible: false },
+            horzLines: { visible: false },
+          },
+          rightPriceScale: { visible: false },
+          leftPriceScale: { visible: false },
+          timeScale: { visible: false },
+          crosshair: {
+            horzLine: { visible: false, labelVisible: false },
+            vertLine: { visible: false, labelVisible: false },
+          },
+          width: el.clientWidth,
+          height,
+        }
+      : {
+          ...layoutOpts,
+          width: el.clientWidth,
+          height,
+        };
+
+    const chart = createChart(el, chartOptions);
+    const series = chart.addAreaSeries(
+      minimal
+        ? {
+            lineColor: GOLD,
+            topColor: "rgba(200, 150, 62, 0.2)",
+            bottomColor: "rgba(200, 150, 62, 0.04)",
+            lineWidth: 3,
+          }
+        : {
+            lineColor: GOLD,
+            topColor: FILL_TOP,
+            bottomColor: FILL_BOTTOM,
+            lineWidth: 2,
+          }
+    );
     series.setData(
       points.map((p) => ({
         time: isoOrDateToTime(p.time),
@@ -62,14 +103,37 @@ export function LineChartPanel({ title, points, height = 240, variant = "gold", 
       ro.disconnect();
       chart.remove();
     };
-  }, [title, height, points, variant]);
+  }, [title, height, points, variant, minimal]);
 
   const body = (
-    <div className={embedded ? "px-3 pb-3 pt-0" : title ? "px-3 pb-3 pt-0" : "px-3 pb-3 pt-3"}>
+    <div
+      className={
+        minimal && embedded
+          ? "w-full"
+          : embedded
+            ? "px-3 pb-3 pt-0"
+            : title
+              ? "px-3 pb-3 pt-0"
+              : "px-3 pb-3 pt-3"
+      }
+    >
       {!points?.length ? (
-        <p className="py-10 text-center text-xs font-mono text-muted">No data for this range.</p>
+        <p
+          className={`text-center text-xs text-muted ${
+            minimal
+              ? `flex items-center justify-center font-sans border-b border-ink/[0.08]`
+              : "py-10 font-mono"
+          }`}
+          style={minimal ? { minHeight: height } : undefined}
+        >
+          No data for this range.
+        </p>
       ) : (
-        <div ref={containerRef} className="w-full" style={{ height }} />
+        <div
+          ref={containerRef}
+          className={`w-full ${minimal ? "border-b border-ink/[0.08]" : ""}`}
+          style={{ height }}
+        />
       )}
     </div>
   );

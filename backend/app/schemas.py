@@ -86,6 +86,7 @@ class MarketSessionOut(BaseModel):
     closed_reason: Optional[str] = None
     holiday_name: Optional[str] = None
     seconds_until_open: Optional[int] = None
+    seconds_until_close: Optional[int] = None
     next_open_melbourne_iso: Optional[str] = None
     next_open_display: Optional[str] = None
 

@@ -9,8 +9,16 @@ import SparklineCell from "../components/SparklineCell";
 
 const RANGE_TAB_DAYS = { "1W": 7, "1M": 31, "3M": 92, "1Y": 365 };
 
-const metricValueClass =
-  "min-w-0 max-w-full overflow-x-auto whitespace-nowrap font-mono text-xs font-bold tabular-nums leading-none tracking-tight sm:text-sm md:text-base [scrollbar-width:thin]";
+/** Top holdings by market value; remainder rolled into “Other”. */
+const CONCENTRATION_TOP_N = 5;
+
+const PIE_SLICE_COLORS = ["#c8963e", "#2d8a55", "#5c6f8c", "#b8860b", "#9a8b7a"];
+const PIE_OTHER_COLOR = "#9ca3af";
+const PIE_EMPTY_COLOR = "#eae8e4";
+
+/** Compact numbers for the horizontal metric strip above the chart */
+const metricStripValueClass =
+  "min-w-0 max-w-full overflow-x-auto whitespace-nowrap font-mono text-[10px] font-bold tabular-nums leading-none tracking-tight sm:text-xs md:text-sm [scrollbar-width:thin]";
 
 function calendarRange(daysBack) {
   const end = new Date();
@@ -89,6 +97,104 @@ export default function PortfolioPage() {
     () => equityDaily.map((d) => ({ time: d.date, value: d.equity })),
     [equityDaily]
   );
+
+  /** Cash vs market value of holdings (same basis as total equity). */
+  const allocationPct = useMemo(() => {
+    if (!data || data.total_equity <= 0) return { cash: 0, invested: 0 };
+    const te = data.total_equity;
+    const cash = Math.min(Math.max(0, data.cash_balance), te);
+    const invested = Math.max(0, te - cash);
+    return {
+      cash: (cash / te) * 100,
+      invested: (invested / te) * 100,
+    };
+  }, [data]);
+
+  const concentrationRows = useMemo(() => {
+    if (!data?.holdings?.length || data.total_equity <= 0) return [];
+    const te = data.total_equity;
+    const sorted = [...data.holdings].sort((a, b) => b.market_value - a.market_value);
+    const top = sorted.slice(0, CONCENTRATION_TOP_N);
+    const rest = sorted.slice(CONCENTRATION_TOP_N);
+    const rows = top.map((h) => ({
+      key: h.ticker,
+      label: h.ticker,
+      marketValue: h.market_value,
+      pct: (h.market_value / te) * 100,
+    }));
+    if (rest.length > 0) {
+      const otherVal = rest.reduce((s, h) => s + h.market_value, 0);
+      rows.push({
+        key: "__other__",
+        label: `Other (${rest.length})`,
+        marketValue: otherVal,
+        pct: (otherVal / te) * 100,
+      });
+    }
+    return rows;
+  }, [data]);
+
+  /** Donut: slice angles from relative market value; legend uses % of total portfolio. */
+  const concentrationPie = useMemo(() => {
+    if (!concentrationRows.length) {
+      const emptyLegend = Array.from({ length: CONCENTRATION_TOP_N }, (_, i) => ({
+        key: `pie-ph-${i}`,
+        label: "—",
+        pct: 0,
+        marketValue: 0,
+        color: PIE_EMPTY_COLOR,
+        placeholder: true,
+      }));
+      return {
+        gradient: `conic-gradient(from 0deg, ${PIE_EMPTY_COLOR} 0deg 360deg)`,
+        centerMain: "—",
+        centerSub: "No positions",
+        legend: emptyLegend,
+      };
+    }
+    const totalMv = concentrationRows.reduce((s, r) => s + r.marketValue, 0);
+    if (totalMv <= 0) {
+      const emptyLegend = concentrationRows.map((r, i) => ({
+        key: r.key,
+        label: r.label,
+        pct: r.pct,
+        marketValue: r.marketValue,
+        color: PIE_SLICE_COLORS[i % PIE_SLICE_COLORS.length],
+        placeholder: false,
+      }));
+      return {
+        gradient: `conic-gradient(from 0deg, ${PIE_EMPTY_COLOR} 0deg 360deg)`,
+        centerMain: "—",
+        centerSub: "No value",
+        legend: emptyLegend,
+      };
+    }
+    let angle = 0;
+    const parts = [];
+    const legend = concentrationRows.map((r, i) => {
+      const deg = (r.marketValue / totalMv) * 360;
+      const color = r.key === "__other__" ? PIE_OTHER_COLOR : PIE_SLICE_COLORS[i % PIE_SLICE_COLORS.length];
+      parts.push(`${color} ${angle}deg ${angle + deg}deg`);
+      angle += deg;
+      return {
+        key: r.key,
+        label: r.label,
+        pct: r.pct,
+        marketValue: r.marketValue,
+        color,
+        placeholder: false,
+      };
+    });
+    const top = concentrationRows[0];
+    const sub =
+      top.label.length > 14 ? `${top.label.slice(0, 12)}…` : top.label;
+    return {
+      gradient: `conic-gradient(from 0deg, ${parts.join(", ")})`,
+      centerMain: `${top.pct.toFixed(1)}%`,
+      centerSub: sub,
+      legend,
+    };
+  }, [concentrationRows]);
 
   const avRequestsLeft = useMemo(() => {
     if (!user?.has_alpha_vantage_key) return null;
@@ -177,68 +283,182 @@ export default function PortfolioPage() {
 
       <div className="space-y-6 md:space-y-8">
         <div className="portfolio-layout">
-          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="cs-metric min-w-0">
-              <div className="cs-label mb-3">Cash</div>
-              <div className={`${metricValueClass} text-ink`}>
-                {data != null ? formatAud(data.cash_balance) : "—"}
+          <div className="portfolio-chart-cell flex flex-col gap-[var(--portfolio-layout-gap)]">
+            <div className="portfolio-metric-strip">
+              <div className="min-w-0 rounded-card bg-card p-3 shadow-card sm:p-4">
+                <div className="cs-label mb-1.5">Cash</div>
+                <div className={`${metricStripValueClass} text-ink`}>
+                  {data != null ? formatAud(data.cash_balance) : "—"}
+                </div>
+              </div>
+              <div className="min-w-0 rounded-card border-b-4 border-gold bg-card p-3 shadow-card sm:p-4">
+                <div className="cs-label mb-1.5">Total value</div>
+                <div className={`${metricStripValueClass} text-gold`}>
+                  {data != null ? formatAud(data.total_equity) : "—"}
+                </div>
+              </div>
+              <div className="min-w-0 rounded-card bg-card p-3 shadow-card sm:p-4">
+                <div className="cs-label mb-1.5">Total return</div>
+                <div
+                  className={`${metricStripValueClass} ${
+                    data && data.total_return_pct >= 0 ? "text-profit" : "text-danger"
+                  }`}
+                >
+                  {data != null
+                    ? `${Number(data.total_return_pct) >= 0 ? "+" : ""}${Number(data.total_return_pct).toFixed(2)}%`
+                    : "—"}
+                </div>
+              </div>
+              <div className="min-w-0 rounded-card bg-card p-3 shadow-card sm:p-4">
+                <div className="cs-label mb-1.5">Unrealised P/L</div>
+                <div
+                  className={`${metricStripValueClass} ${
+                    data && data.total_unrealized_pnl >= 0 ? "text-profit" : "text-danger"
+                  }`}
+                >
+                  {data != null
+                    ? `${data.total_unrealized_pnl >= 0 ? "+" : ""}${formatAud(data.total_unrealized_pnl)}`
+                    : "—"}
+                </div>
               </div>
             </div>
-            <div className="cs-metric-featured min-w-0">
-              <div className="cs-label mb-3">Total value</div>
-              <div className={`${metricValueClass} text-gold`}>
-                {data != null ? formatAud(data.total_equity) : "—"}
+
+            <div className="cs-card min-w-0 overflow-hidden">
+              <div className="cs-card-header pb-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Portfolio value</h2>
+                <div className="flex flex-wrap gap-2">
+                  {["1W", "1M", "3M", "1Y"].map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setRangeTab(key)}
+                      className={`cs-btn-neutral px-3 py-2 ${rangeTab === key ? "ring-2 ring-gold/40 text-ink" : ""}`}
+                    >
+                      {key}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="cs-metric min-w-0">
-              <div className="cs-label mb-3">Total return</div>
-              <div
-                className={`${metricValueClass} ${
-                  data && data.total_return_pct >= 0 ? "text-profit" : "text-danger"
-                }`}
-              >
-                {data != null
-                  ? `${Number(data.total_return_pct) >= 0 ? "+" : ""}${Number(data.total_return_pct).toFixed(2)}%`
-                  : "—"}
-              </div>
-            </div>
-            <div className="cs-metric min-w-0">
-              <div className="cs-label mb-3">Unrealised P/L</div>
-              <div
-                className={`${metricValueClass} ${
-                  data && data.total_unrealized_pnl >= 0 ? "text-profit" : "text-danger"
-                }`}
-              >
-                {data != null
-                  ? `${data.total_unrealized_pnl >= 0 ? "+" : ""}${formatAud(data.total_unrealized_pnl)}`
-                  : "—"}
+              {equityErr && <p className="px-5 pb-2 text-xs font-mono text-danger">{equityErr}</p>}
+              <div className="px-3 pb-3 pt-0">
+                <LineChartPanel embedded points={equityPoints} height={260} />
               </div>
             </div>
           </div>
 
-          <div className="cs-card overflow-hidden">
-            <div className="cs-card-header pb-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Portfolio value</h2>
-              <div className="flex flex-wrap gap-2">
-                {["1W", "1M", "3M", "1Y"].map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setRangeTab(key)}
-                    className={`cs-btn-neutral px-3 py-2 ${rangeTab === key ? "ring-2 ring-gold/40 text-ink" : ""}`}
-                  >
-                    {key}
-                  </button>
-                ))}
+          <div className="portfolio-left-column">
+            <div className="cs-card flex min-h-0 flex-1 flex-col p-5">
+              <div className="cs-label mb-3">Allocation</div>
+              <p className="mb-3 text-xs text-muted leading-snug">
+                Share of total value held as cash vs in listed holdings (at last close).
+              </p>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06]">
+                <div className="flex h-full w-full">
+                  <div
+                    className="h-full bg-gold transition-[width] duration-300"
+                    style={{ width: `${allocationPct.cash}%` }}
+                    title={`Cash ${allocationPct.cash.toFixed(1)}%`}
+                  />
+                  <div
+                    className="h-full bg-ink/20 transition-[width] duration-300"
+                    style={{ width: `${allocationPct.invested}%` }}
+                    title={`Holdings ${allocationPct.invested.toFixed(1)}%`}
+                  />
+                </div>
               </div>
-            </div>
-            {equityErr && <p className="px-5 pb-2 text-xs font-mono text-danger">{equityErr}</p>}
-            <div className="px-3 pb-3 pt-0">
-              <LineChartPanel embedded points={equityPoints} height={260} />
+              <dl className="mt-4 space-y-2 font-mono text-xs">
+                <div className="flex items-baseline justify-between gap-2 border-t border-ink/[0.06] pt-3">
+                  <dt className="text-muted">Cash</dt>
+                  <dd className="shrink-0 tabular-nums font-semibold text-ink">
+                    {data != null ? `${allocationPct.cash.toFixed(1)}%` : "—"}{" "}
+                    <span className="font-normal text-muted">
+                      {data != null ? `· ${formatAud(data.cash_balance)}` : ""}
+                    </span>
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-muted">Holdings</dt>
+                  <dd className="shrink-0 tabular-nums font-semibold text-ink">
+                    {data != null ? `${allocationPct.invested.toFixed(1)}%` : "—"}{" "}
+                    <span className="font-normal text-muted">
+                      {data != null
+                        ? `· ${formatAud(Math.max(0, data.total_equity - data.cash_balance))}`
+                        : ""}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="mt-6 border-t border-ink/[0.06] pt-6">
+                <div className="cs-label mb-2">Largest holdings</div>
+                <p className="mb-3 text-xs text-muted leading-snug">
+                  Slice angles reflect weight among these holdings; figures are % of total portfolio (last close). Top{" "}
+                  {CONCENTRATION_TOP_N} tickers, remainder as Other.
+                </p>
+                {data != null && data.holdings.length === 0 ? (
+                  <p className="mb-3 text-xs leading-snug text-muted">
+                    Shift allocation on the{" "}
+                    <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
+                      Trade
+                    </Link>{" "}
+                    page.
+                  </p>
+                ) : null}
+                <div className={`mt-1 flex flex-col items-center gap-4 ${data == null ? "opacity-60" : ""}`}>
+                  <div className="relative h-[9.5rem] w-[9.5rem] shrink-0">
+                    <div
+                      className="absolute inset-0 rounded-full shadow-card-sm"
+                      style={{ background: concentrationPie.gradient }}
+                    />
+                    <div className="absolute inset-[22%] flex flex-col items-center justify-center gap-0.5 rounded-full bg-card px-2 text-center shadow-card-sm">
+                      <span className="font-mono text-lg font-bold tabular-nums leading-none text-ink">
+                        {concentrationPie.centerMain}
+                      </span>
+                      <span className="max-w-full truncate text-[9px] font-semibold uppercase tracking-wide text-muted">
+                        {concentrationPie.centerSub}
+                      </span>
+                    </div>
+                  </div>
+                  <ul className="w-full space-y-2 text-xs font-mono">
+                    {concentrationPie.legend.map((row) => (
+                      <li key={row.key} className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-sm shadow-card-sm"
+                          style={{ backgroundColor: row.color }}
+                        />
+                        <span className={`min-w-0 flex-1 truncate ${row.placeholder ? "text-muted" : "font-bold text-ink"}`}>
+                          {row.label}
+                        </span>
+                        <span className={`shrink-0 text-right tabular-nums ${row.placeholder ? "text-muted" : "text-ink"}`}>
+                          {row.placeholder ? (
+                            "0.0% · —"
+                          ) : (
+                            <>
+                              <span className="font-semibold">{row.pct.toFixed(1)}%</span>
+                              <span className="text-muted"> · {formatAud(row.marketValue)}</span>
+                            </>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {!(data != null && data.holdings.length === 0) && (
+                <p className="mt-auto pt-5 text-xs leading-snug text-muted">
+                  Shift allocation on the{" "}
+                  <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
+                    Trade
+                  </Link>{" "}
+                  page.
+                </p>
+              )}
             </div>
           </div>
         </div>
 
+        {(data == null || data.holdings.length > 0) && (
         <div className="cs-card overflow-hidden">
             <div className="cs-card-header pb-2">
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Holdings</h2>
@@ -246,16 +466,8 @@ export default function PortfolioPage() {
                 Click a row for individual stock performance (EOD close) below the table.
               </p>
             </div>
-            {!data ? (
+            {data == null ? (
               <p className="p-5 text-sm font-mono text-muted">Loading…</p>
-            ) : data.holdings.length === 0 ? (
-              <p className="p-5 text-sm text-muted">
-                No positions yet. Open the{" "}
-                <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
-                  Trade
-                </Link>{" "}
-                page to place a buy.
-              </p>
             ) : (
               <>
               <div className="overflow-x-auto px-2 pb-4">
@@ -349,6 +561,7 @@ export default function PortfolioPage() {
               </>
             )}
           </div>
+        )}
       </div>
     </div>
   );
