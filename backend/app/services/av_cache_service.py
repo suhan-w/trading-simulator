@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import AvDailyUsage, AvEodCache, User
-from app.services import alpha_vantage, market_service
+from app.services import alpha_vantage, market_service, yahoo_prices
 
 
 def _utc_today() -> date:
@@ -18,18 +18,30 @@ def _utc_today() -> date:
 
 
 def parse_daily_ohlcv(av_payload: dict[str, Any]) -> dict[str, dict[str, float]]:
+    """Parse TIME_SERIES_DAILY or TIME_SERIES_DAILY_ADJUSTED (same Time Series key, different row fields)."""
     series = av_payload.get("Time Series (Daily)") or {}
     out: dict[str, dict[str, float]] = {}
     for d, row in series.items():
         if not isinstance(row, dict):
             continue
         try:
+            open_ = float(row["1. open"])
+            high = float(row["2. high"])
+            low = float(row["3. low"])
+            close_raw = row.get("5. adjusted close") or row.get("4. close")
+            if close_raw is None:
+                continue
+            close = float(close_raw)
+            vol_raw = row.get("5. volume")
+            if vol_raw is None:
+                vol_raw = row.get("6. volume")
+            volume = float(vol_raw or 0)
             out[str(d)] = {
-                "open": float(row["1. open"]),
-                "high": float(row["2. high"]),
-                "low": float(row["3. low"]),
-                "close": float(row["4. close"]),
-                "volume": float(row.get("5. volume", 0) or 0),
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
             }
         except (KeyError, TypeError, ValueError):
             continue
@@ -162,7 +174,7 @@ def get_or_fetch_ohlcv(
     user: User,
     ticker: str,
 ) -> tuple[dict[str, dict[str, float]], bool]:
-    """Return (bars_by_date_str, from_cache). One network call only if not cached today; increments usage."""
+    """Return (bars_by_date_str, from_cache). Fetches from Alpha Vantage if not cached today (1–2 HTTP calls if plain daily is empty); increments usage per request."""
     api_key = (user.alpha_vantage_api_key or "").strip()
     if not api_key:
         raise ValueError("Add your Alpha Vantage API key in Account settings.")
@@ -181,16 +193,48 @@ def get_or_fetch_ohlcv(
             "Try again tomorrow, or use symbols already cached today."
         )
 
+    used_before = get_usage_today(db, user.id)
+
     data = alpha_vantage.query(
         api_key,
         {"function": "TIME_SERIES_DAILY", "symbol": sym, "outputsize": "full"},
     )
     bars = parse_daily_ohlcv(data)
+    api_calls = 1
+
+    # Free tier often returns an empty plain daily series for ASX while ADJUSTED still has data
+    # (same pattern as global_quote in alpha_vantage.py).
     if len(bars) < 2:
-        raise ValueError(f"No EOD history returned for {sym}.")
+        if used_before + 1 >= limit:
+            raise ValueError(
+                f"No EOD history returned for {sym} on the first request, and the daily "
+                f"Alpha Vantage limit ({limit}) does not allow a second request for adjusted prices. "
+                "Try again tomorrow."
+            )
+        data_adj = alpha_vantage.query(
+            api_key,
+            {
+                "function": "TIME_SERIES_DAILY_ADJUSTED",
+                "symbol": sym,
+                "outputsize": "full",
+            },
+        )
+        bars = parse_daily_ohlcv(data_adj)
+        api_calls = 2
+
+    if len(bars) < 2:
+        try:
+            bars = yahoo_prices.fetch_daily_ohlcv(sym)
+        except Exception:
+            raise ValueError(
+                f"No EOD history returned for {sym}. "
+                "Alpha Vantage returned fewer than two daily bars and Yahoo fallback also failed. "
+                "Common causes: invalid/expired API key, API throttling, or symbol data not available."
+            )
 
     save_cache(db, sym, day, bars)
-    increment_usage(db, user.id)
+    for _ in range(api_calls):
+        increment_usage(db, user.id)
     return bars, False
 
 

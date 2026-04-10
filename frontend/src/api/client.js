@@ -69,6 +69,7 @@ export const api = {
   me: () => request("/api/auth/me"),
   updateAlphaVantageKey: (alpha_vantage_api_key) =>
     request("/api/auth/alpha-vantage-key", { method: "PATCH", body: { alpha_vantage_api_key } }),
+  resetSession: () => request("/api/auth/reset-session", { method: "POST" }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
 
   marketSession: () => request("/api/market/session"),

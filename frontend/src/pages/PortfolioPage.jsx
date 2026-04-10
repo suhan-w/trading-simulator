@@ -4,21 +4,18 @@ import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatAud } from "../formatAud";
 import { LineChartPanel } from "../components/LineChartPanel";
+import CardHeaderTitle from "../components/CardHeaderTitle";
+import ResetSessionModal from "../components/ResetSessionModal";
 import SectionHeading from "../components/SectionHeading";
 import SparklineCell from "../components/SparklineCell";
+import { CONCENTRATION_SLICE_COLORS } from "../constants/concentrationPalette";
 
 const RANGE_TAB_DAYS = { "1W": 7, "1M": 31, "3M": 92, "1Y": 365 };
 
 /** Top holdings by market value; remainder rolled into “Other”. */
 const CONCENTRATION_TOP_N = 5;
 
-const PIE_SLICE_COLORS = ["#c8963e", "#2d8a55", "#5c6f8c", "#b8860b", "#9a8b7a"];
-const PIE_OTHER_COLOR = "#9ca3af";
 const PIE_EMPTY_COLOR = "#eae8e4";
-
-/** Compact numbers for the horizontal metric strip above the chart */
-const metricStripValueClass =
-  "min-w-0 max-w-full overflow-x-auto whitespace-nowrap font-mono text-[10px] font-bold tabular-nums leading-none tracking-tight sm:text-xs md:text-sm [scrollbar-width:thin]";
 
 function calendarRange(daysBack) {
   const end = new Date();
@@ -29,6 +26,9 @@ function calendarRange(daysBack) {
 
 export default function PortfolioPage() {
   const { user, refreshMe } = useAuth();
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -52,6 +52,35 @@ export default function PortfolioPage() {
         setError(e?.message || "Failed to load portfolio");
       });
   }, []);
+
+  const confirmResetSession = useCallback(async () => {
+    setResetBusy(true);
+    setError(null);
+    try {
+      await api.resetSession();
+      await refreshMe();
+      setSelectedTicker(null);
+      setStockPoints([]);
+      setStockErr(null);
+      setSparklines({});
+      load();
+      const days = RANGE_TAB_DAYS[rangeTab];
+      const { start, end } = calendarRange(days);
+      setEquityErr(null);
+      api
+        .equityDaily(start, end)
+        .then(setEquityDaily)
+        .catch((e) => {
+          setEquityDaily([]);
+          setEquityErr(e?.message || "Could not load equity history");
+        });
+      setResetOpen(false);
+    } catch (e) {
+      setError(e?.message || "Could not reset session");
+    } finally {
+      setResetBusy(false);
+    }
+  }, [refreshMe, load, rangeTab]);
 
   useEffect(() => {
     load();
@@ -159,7 +188,7 @@ export default function PortfolioPage() {
         label: r.label,
         pct: r.pct,
         marketValue: r.marketValue,
-        color: PIE_SLICE_COLORS[i % PIE_SLICE_COLORS.length],
+        color: CONCENTRATION_SLICE_COLORS[i % CONCENTRATION_SLICE_COLORS.length],
         placeholder: false,
       }));
       return {
@@ -173,7 +202,7 @@ export default function PortfolioPage() {
     const parts = [];
     const legend = concentrationRows.map((r, i) => {
       const deg = (r.marketValue / totalMv) * 360;
-      const color = r.key === "__other__" ? PIE_OTHER_COLOR : PIE_SLICE_COLORS[i % PIE_SLICE_COLORS.length];
+      const color = CONCENTRATION_SLICE_COLORS[i % CONCENTRATION_SLICE_COLORS.length];
       parts.push(`${color} ${angle}deg ${angle + deg}deg`);
       angle += deg;
       return {
@@ -244,7 +273,26 @@ export default function PortfolioPage() {
     <div className="space-y-6 md:space-y-8">
       <SectionHeading
         title="Portfolio"
-        subtitle="Metrics, portfolio value over time, and holdings. Place trades on the Trade page."
+        subtitle="See value, holdings, and history—open Trade when you want to buy or sell."
+        tooltipText="Track your virtual holdings and portfolio value over time."
+        right={
+          <button
+            type="button"
+            className="text-[11px] font-medium uppercase tracking-wide text-muted underline-offset-2 hover:text-ink hover:underline"
+            onClick={() => setResetOpen(true)}
+          >
+            New session
+          </button>
+        }
+      />
+
+      <ResetSessionModal
+        open={resetOpen}
+        busy={resetBusy}
+        onClose={() => {
+          if (!resetBusy) setResetOpen(false);
+        }}
+        onConfirm={confirmResetSession}
       />
 
       {user?.has_alpha_vantage_key &&
@@ -262,10 +310,8 @@ export default function PortfolioPage() {
           </div>
         ) : (
           <div className="cs-gold-notice" role="alert">
-            <p className="font-semibold text-ink font-sans">Alpha Vantage daily limit</p>
-            <p className="mt-1 text-muted font-mono text-xs">
-              Only {avRequestsLeft} daily request{avRequestsLeft === 1 ? "" : "s"} left today.
-            </p>
+            <p className="font-semibold text-ink">Alpha Vantage daily limit</p>
+            <p className="text-muted">Only {avRequestsLeft} daily request{avRequestsLeft === 1 ? "" : "s"} left today.</p>
           </div>
         ))}
 
@@ -283,75 +329,93 @@ export default function PortfolioPage() {
 
       <div className="space-y-6 md:space-y-8">
         <div className="portfolio-layout">
-          <div className="portfolio-chart-cell flex flex-col gap-[var(--portfolio-layout-gap)]">
-            <div className="portfolio-metric-strip">
-              <div className="min-w-0 rounded-card bg-card p-3 shadow-card sm:p-4">
-                <div className="cs-label mb-1.5">Cash</div>
-                <div className={`${metricStripValueClass} text-ink`}>
+          <div className="portfolio-chart-cell flex h-full min-h-0 flex-col gap-[var(--portfolio-layout-gap)]">
+            <div className="metric-strip-container shrink-0">
+              <div className="portfolio-metric-strip">
+                <div className="metric-strip-card">
+                <p className="metric-strip-label">Cash</p>
+                <p className={`metric-strip-value ${data != null ? "metric-strip-value--cash" : "metric-strip-value--neutral"}`}>
                   {data != null ? formatAud(data.cash_balance) : "—"}
-                </div>
+                </p>
               </div>
-              <div className="min-w-0 rounded-card border-b-4 border-gold bg-card p-3 shadow-card sm:p-4">
-                <div className="cs-label mb-1.5">Total value</div>
-                <div className={`${metricStripValueClass} text-gold`}>
+              <div className="metric-strip-card metric-strip-card--featured">
+                <p className="metric-strip-label">Total value</p>
+                <p className={`metric-strip-value ${data != null ? "metric-strip-value--gold" : "metric-strip-value--neutral"}`}>
                   {data != null ? formatAud(data.total_equity) : "—"}
-                </div>
+                </p>
               </div>
-              <div className="min-w-0 rounded-card bg-card p-3 shadow-card sm:p-4">
-                <div className="cs-label mb-1.5">Total return</div>
-                <div
-                  className={`${metricStripValueClass} ${
-                    data && data.total_return_pct >= 0 ? "text-profit" : "text-danger"
+              <div className="metric-strip-card">
+                <p className="metric-strip-label">Total return</p>
+                <p
+                  className={`metric-strip-value ${
+                    data == null
+                      ? "metric-strip-value--neutral"
+                      : data.total_return_pct < 0
+                        ? "metric-strip-value--danger"
+                        : "metric-strip-value--profit"
                   }`}
                 >
                   {data != null
                     ? `${Number(data.total_return_pct) >= 0 ? "+" : ""}${Number(data.total_return_pct).toFixed(2)}%`
                     : "—"}
-                </div>
+                </p>
               </div>
-              <div className="min-w-0 rounded-card bg-card p-3 shadow-card sm:p-4">
-                <div className="cs-label mb-1.5">Unrealised P/L</div>
-                <div
-                  className={`${metricStripValueClass} ${
-                    data && data.total_unrealized_pnl >= 0 ? "text-profit" : "text-danger"
+              <div className="metric-strip-card">
+                <p className="metric-strip-label">Unrealised P/L</p>
+                <p
+                  className={`metric-strip-value ${
+                    data == null
+                      ? "metric-strip-value--neutral"
+                      : data.total_unrealized_pnl < 0
+                        ? "metric-strip-value--danger"
+                        : "metric-strip-value--profit"
                   }`}
                 >
                   {data != null
                     ? `${data.total_unrealized_pnl >= 0 ? "+" : ""}${formatAud(data.total_unrealized_pnl)}`
                     : "—"}
+                </p>
                 </div>
               </div>
             </div>
 
-            <div className="cs-card min-w-0 overflow-hidden">
-              <div className="cs-card-header pb-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Portfolio value</h2>
-                <div className="flex flex-wrap gap-2">
-                  {["1W", "1M", "3M", "1Y"].map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setRangeTab(key)}
-                      className={`cs-btn-neutral px-3 py-2 ${rangeTab === key ? "ring-2 ring-gold/40 text-ink" : ""}`}
-                    >
-                      {key}
-                    </button>
-                  ))}
-                </div>
+            <div className="cs-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <div className="cs-card-header shrink-0 pb-2">
+                <CardHeaderTitle
+                  title="Portfolio value"
+                  tooltipText="Total value of your cash and holdings over time."
+                  right={
+                    <div className="flex flex-wrap gap-2">
+                      {["1W", "1M", "3M", "1Y"].map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setRangeTab(key)}
+                          className={`cs-btn-neutral px-3 py-2 ${rangeTab === key ? "ring-2 ring-gold/40 text-ink" : ""}`}
+                        >
+                          {key}
+                        </button>
+                      ))}
+                    </div>
+                  }
+                />
               </div>
-              {equityErr && <p className="px-5 pb-2 text-xs font-mono text-danger">{equityErr}</p>}
-              <div className="px-3 pb-3 pt-0">
-                <LineChartPanel embedded points={equityPoints} height={260} />
+              {equityErr && (
+                <p className="shrink-0 px-5 pb-2 text-xs font-mono text-danger">{equityErr}</p>
+              )}
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <LineChartPanel embedded fillHeight height={260} points={equityPoints} />
               </div>
             </div>
           </div>
 
           <div className="portfolio-left-column">
             <div className="cs-card flex min-h-0 flex-1 flex-col p-5">
-              <div className="cs-label mb-3">Allocation</div>
-              <p className="mb-3 text-xs text-muted leading-snug">
-                Share of total value held as cash vs in listed holdings (at last close).
-              </p>
+              <CardHeaderTitle
+                title="Allocation"
+                tooltipText="How your portfolio is split between cash and stocks."
+                subtitle="Share of total value held as cash vs in listed holdings (at last close)."
+              />
               <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06]">
                 <div className="flex h-full w-full">
                   <div
@@ -390,20 +454,11 @@ export default function PortfolioPage() {
               </dl>
 
               <div className="mt-6 border-t border-ink/[0.06] pt-6">
-                <div className="cs-label mb-2">Largest holdings</div>
-                <p className="mb-3 text-xs text-muted leading-snug">
-                  Slice angles reflect weight among these holdings; figures are % of total portfolio (last close). Top{" "}
-                  {CONCENTRATION_TOP_N} tickers, remainder as Other.
-                </p>
-                {data != null && data.holdings.length === 0 ? (
-                  <p className="mb-3 text-xs leading-snug text-muted">
-                    Shift allocation on the{" "}
-                    <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
-                      Trade
-                    </Link>{" "}
-                    page.
-                  </p>
-                ) : null}
+                <CardHeaderTitle
+                  title="Largest holdings"
+                  tooltipText="Top positions by market value as a share of your total portfolio."
+                  subtitle={`Top ${CONCENTRATION_TOP_N} tickers by value; smaller positions are grouped as Other`}
+                />
                 <div className={`mt-1 flex flex-col items-center gap-4 ${data == null ? "opacity-60" : ""}`}>
                   <div className="relative h-[9.5rem] w-[9.5rem] shrink-0">
                     <div
@@ -419,6 +474,13 @@ export default function PortfolioPage() {
                       </span>
                     </div>
                   </div>
+                  <p className="w-full max-w-full text-center text-xs leading-snug text-muted">
+                    Shift allocation on the{" "}
+                    <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
+                      Trade
+                    </Link>{" "}
+                    page.
+                  </p>
                   <ul className="w-full space-y-2 text-xs font-mono">
                     {concentrationPie.legend.map((row) => (
                       <li key={row.key} className="flex items-center gap-2">
@@ -444,16 +506,6 @@ export default function PortfolioPage() {
                   </ul>
                 </div>
               </div>
-
-              {!(data != null && data.holdings.length === 0) && (
-                <p className="mt-auto pt-5 text-xs leading-snug text-muted">
-                  Shift allocation on the{" "}
-                  <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
-                    Trade
-                  </Link>{" "}
-                  page.
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -461,10 +513,11 @@ export default function PortfolioPage() {
         {(data == null || data.holdings.length > 0) && (
         <div className="cs-card overflow-hidden">
             <div className="cs-card-header pb-2">
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Holdings</h2>
-              <p className="mt-2 text-xs text-muted">
-                Click a row for individual stock performance (EOD close) below the table.
-              </p>
+              <CardHeaderTitle
+                title="Holdings"
+                tooltipText="All stocks you currently own with unrealised profit and loss."
+                subtitle="Click a row for individual stock performance (EOD close) below the table."
+              />
             </div>
             {data == null ? (
               <p className="p-5 text-sm font-mono text-muted">Loading…</p>
@@ -539,17 +592,22 @@ export default function PortfolioPage() {
 
               {selectedTicker && (
                 <div className="border-t border-ink/[0.08] bg-black/[0.02] px-2 pb-4 pt-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-1 pb-3">
-                    <h3 className="min-w-0 text-[11px] font-semibold uppercase tracking-wider text-muted truncate">
-                      Individual stock — {selectedTicker} (EOD close, ~1Y)
-                    </h3>
-                    <button
-                      type="button"
-                      className="cs-btn-neutral text-xs shrink-0 self-start sm:self-auto"
-                      onClick={() => setSelectedTicker(null)}
-                    >
-                      Clear selection
-                    </button>
+                  <div className="px-1 pb-3">
+                    <CardHeaderTitle
+                      headingLevel={3}
+                      title={`Individual Stock — ${selectedTicker} (EOD Close, ~1Y)`}
+                      titleClassName="min-w-0 truncate normal-case"
+                      tooltipText="Price history for the selected holding (end-of-day close)."
+                      right={
+                        <button
+                          type="button"
+                          className="cs-btn-neutral text-xs shrink-0 self-start sm:self-auto"
+                          onClick={() => setSelectedTicker(null)}
+                        >
+                          Clear selection
+                        </button>
+                      }
+                    />
                   </div>
                   {stockLoading && <p className="px-1 pb-2 text-xs font-mono text-muted">Loading…</p>}
                   {stockErr && <p className="px-1 pb-2 text-xs font-mono text-danger">{stockErr}</p>}

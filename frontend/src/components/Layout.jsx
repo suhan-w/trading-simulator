@@ -83,7 +83,7 @@ export default function Layout() {
             </nav>
             {user && (
               <button type="button" onClick={() => void logout()} className="cs-btn-neutral shrink-0">
-                New session
+                Sign out
               </button>
             )}
           </div>

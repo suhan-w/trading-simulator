@@ -26,6 +26,7 @@ class UserOut(BaseModel):
     has_alpha_vantage_key: bool = False
     alpha_vantage_requests_used_today: int = 0
     alpha_vantage_daily_limit: int = 25
+    initial_cash: float
 
 
 def user_to_out(user: User, db: Session | None = None) -> UserOut:
@@ -44,6 +45,7 @@ def user_to_out(user: User, db: Session | None = None) -> UserOut:
         has_alpha_vantage_key=bool((user.alpha_vantage_api_key or "").strip()),
         alpha_vantage_requests_used_today=used,
         alpha_vantage_daily_limit=limit,
+        initial_cash=float(settings.initial_cash),
     )
 
 

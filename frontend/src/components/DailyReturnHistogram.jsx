@@ -1,6 +1,7 @@
 import { createChart, ColorType } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 import { isoOrDateToTime } from "../utils/chartTime";
+import CardHeaderTitle from "./CardHeaderTitle";
 
 const BG = "#ffffff";
 const GRID = "rgba(17, 17, 17, 0.04)";
@@ -13,6 +14,7 @@ const layoutOpts = {
     textColor: "#aaaaaa",
     fontSize: 11,
     fontFamily: "JetBrains Mono, ui-monospace, monospace",
+    attributionLogo: false,
   },
   grid: {
     vertLines: { color: GRID },
@@ -23,7 +25,7 @@ const layoutOpts = {
 };
 
 /** @param {{ date: string, return_pct: number }[]} rows */
-export default function DailyReturnHistogram({ title, rows, height = 220 }) {
+export default function DailyReturnHistogram({ title, tooltipText, rows, height = 220 }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export default function DailyReturnHistogram({ title, rows, height = 220 }) {
   return (
     <section className="cs-card overflow-hidden">
       <div className="cs-card-header pb-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
+        <CardHeaderTitle title={title} tooltipText={tooltipText} headingLevel={3} />
       </div>
       <div className="px-3 pb-3 pt-0">
         {!rows?.length ? (

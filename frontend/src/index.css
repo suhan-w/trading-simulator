@@ -38,6 +38,185 @@
     @apply mt-1 text-sm text-muted leading-relaxed max-w-2xl;
   }
 
+  /* Page headings (Portfolio, Trade, Performance, Account) */
+  .page-section-heading {
+    @apply w-full max-w-full min-w-0;
+  }
+
+  .page-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  .page-title {
+    margin: 0;
+    font-size: 1.875rem;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #111111;
+    letter-spacing: -0.02em;
+    text-transform: capitalize;
+  }
+
+  .page-subtitle {
+    margin: 0;
+    margin-top: 8px;
+    font-size: 0.875rem;
+    line-height: 1.35;
+    color: #aaaaaa;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  /* Card / panel titles */
+  .card-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  .card-title {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.35;
+    font-weight: 500;
+    color: #111111;
+    text-transform: capitalize;
+  }
+
+  .card-subtitle {
+    margin: 0;
+    margin-bottom: 16px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #aaaaaa;
+  }
+
+  .pixel-tooltip-btn {
+    width: 8px;
+    height: 8px;
+    margin-left: 8px;
+    padding: 0;
+    border: none;
+    background: #c8963e;
+    display: inline-block;
+    cursor: pointer;
+    flex-shrink: 0;
+    vertical-align: middle;
+    border-radius: 1px;
+  }
+
+  .pixel-tooltip-text {
+    font-size: 12px;
+    line-height: 1.45;
+    color: #888888;
+    background: #fdf8f0;
+    border-left: 2px solid #c8963e;
+    padding: 8px 12px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* Metric strip fits the chart column: no horizontal scroll; type scales with strip width */
+  .metric-strip-container {
+    container-type: inline-size;
+    container-name: metricstrip;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .metric-strip-card {
+    container-type: inline-size;
+    container-name: metriccard;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-self: stretch;
+    gap: clamp(2px, 0.5cqi, 6px);
+    padding: clamp(11px, 2.75cqi, 16px);
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #ede9e3;
+    box-shadow: none;
+    min-width: 0;
+    min-height: clamp(4.5rem, 21cqw, 5.25rem);
+    overflow: hidden;
+  }
+
+  .metric-strip-card--featured {
+    border-bottom-width: 3px;
+    border-bottom-color: #c8963e;
+  }
+
+  .metric-strip-label {
+    flex-shrink: 0;
+    align-self: stretch;
+    margin: 0;
+    padding: 0;
+    font-family: Inter, system-ui, sans-serif;
+    font-size: clamp(10px, 2.85cqi, 12px);
+    font-weight: 500;
+    line-height: 1.35;
+    text-transform: uppercase;
+    letter-spacing: clamp(0.3px, 0.22cqi, 0.8px);
+    color: #bbbbbb;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  .metric-strip-value {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    margin: 0;
+    /* Nudge figures slightly below vertical centre while staying inside the card */
+    padding-top: clamp(10px, 1.65cqi, 18px);
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    white-space: nowrap;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    /* Larger bold figures; still scales with card (cqw) so rows stay inside each card */
+    font-size: clamp(1rem, 13.5cqw, 1.6875rem);
+    line-height: 1.2;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    /* One line: if the figure is wider than the card, scroll inside this row only */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .metric-strip-value--cash {
+    color: #111111;
+  }
+
+  .metric-strip-value--gold {
+    color: #c8963e;
+  }
+
+  .metric-strip-value--profit {
+    color: #2d8a55;
+  }
+
+  .metric-strip-value--danger {
+    color: #c0392b;
+  }
+
+  .metric-strip-value--neutral {
+    color: #111111;
+  }
+
   .cs-label {
     @apply block text-[11px] font-semibold uppercase tracking-wider text-muted;
   }
@@ -75,7 +254,25 @@
   }
 
   .cs-gold-notice {
-    @apply flex gap-3 rounded-card border border-gold/35 bg-gold/10 p-4 text-sm text-ink;
+    @apply flex flex-col gap-1 rounded-card border border-gold/35 bg-gold/10 p-4 text-center text-xs font-mono text-ink;
+  }
+
+  .account-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .account-layout .profile-card {
+    grid-column: 1;
+  }
+
+  .account-layout .api-card {
+    grid-column: 2;
+  }
+
+  .account-layout .simulator-card {
+    grid-column: 1 / -1;
   }
 
   .portfolio-layout {
@@ -83,19 +280,33 @@
     display: grid;
     grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
     gap: var(--portfolio-layout-gap);
-    align-items: start;
+    align-items: stretch;
   }
 
   .portfolio-layout > * {
     min-width: 0;
   }
 
-  /* Top-of-chart metrics: one row, four columns; gap matches column gutter */
+  /* Four columns when wide; 2×2 when strip is too narrow for four readable amounts */
   .portfolio-metric-strip {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--portfolio-layout-gap);
+    gap: clamp(6px, 1.2cqi, 12px);
+    align-items: stretch;
+    width: 100%;
     min-width: 0;
+  }
+
+  @container metricstrip (max-width: 36rem) {
+    .portfolio-metric-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container metricstrip (max-width: 20rem) {
+    .portfolio-metric-strip {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* Narrow column (allocation + pie): stretches to align with chart column */
@@ -108,8 +319,8 @@
   }
 
   .portfolio-chart-cell {
-    align-self: start;
     min-width: 0;
+    min-height: 0;
   }
 
   /* Wider column = historical chart / OHLCV + holdings; narrower = execute trade form */
@@ -117,7 +328,8 @@
     display: grid;
     grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
     gap: 24px;
-    align-items: stretch;
+    /* Left column height follows content; do not stretch to match the trade form */
+    align-items: start;
   }
 
   .trade-layout > * {

@@ -16,6 +16,7 @@ from app.schemas import (
     user_to_out,
 )
 from app.security import create_access_token, hash_password, verify_password
+from app.services.reset_service import reset_user_simulation
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -93,4 +94,17 @@ def update_alpha_vantage_key(
 
 @router.post("/logout")
 def logout():
+    return {"ok": True}
+
+
+@router.post("/reset-session")
+def reset_session(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Irreversibly clear this user's trades, holdings, and orders; reset cash to starting balance.
+    Does not affect other users or Alpha Vantage API keys.
+    """
+    reset_user_simulation(db, user)
     return {"ok": True}

@@ -1,12 +1,13 @@
 import { formatAud } from "../formatAud";
+import CardHeaderTitle from "./CardHeaderTitle";
 
 /** @param {{ ticker: string, pnl: number }[]} rows */
-export default function PerStockPnlBars({ title, rows }) {
+export default function PerStockPnlBars({ title, tooltipText, rows }) {
   if (!rows?.length) {
     return (
-      <section className="cs-card p-5">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-        <p className="mt-4 text-xs font-mono text-muted">No stock P&amp;L in this range.</p>
+      <section className="cs-card space-y-5 p-5">
+        <CardHeaderTitle title={title} tooltipText={tooltipText} headingLevel={3} />
+        <p className="text-xs font-mono text-muted">No stock P&amp;L in this range.</p>
       </section>
     );
   }
@@ -14,12 +15,14 @@ export default function PerStockPnlBars({ title, rows }) {
   const extent = Math.max(...rows.map((r) => Math.abs(r.pnl)), 1);
 
   return (
-    <section className="cs-card p-5">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-      <p className="mt-2 text-[11px] font-mono text-muted leading-snug">
-        Realised P/L on sells in range plus current unrealised per ticker.
-      </p>
-      <div className="mt-4 space-y-3">
+    <section className="cs-card space-y-5 p-5">
+      <CardHeaderTitle
+        title={title}
+        tooltipText={tooltipText}
+        subtitle="Realised P/L on sells in range plus current unrealised per ticker."
+        headingLevel={3}
+      />
+      <div className="space-y-3">
         {rows.map((r) => {
           const w = (Math.abs(r.pnl) / extent) * 50;
           const positive = r.pnl >= 0;

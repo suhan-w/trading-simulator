@@ -1,6 +1,7 @@
 import { createChart, ColorType } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 import { isoOrDateToTime } from "../utils/chartTime";
+import CardHeaderTitle from "./CardHeaderTitle";
 
 const BG = "#ffffff";
 const GOLD = "#c8963e";
@@ -17,6 +18,7 @@ const layoutOpts = {
     textColor: "#aaaaaa",
     fontSize: 12,
     fontFamily: "JetBrains Mono, ui-monospace, monospace",
+    attributionLogo: false,
   },
   grid: {
     vertLines: { color: GRID },
@@ -29,18 +31,26 @@ const layoutOpts = {
 /** @param {{ time: string|number, value: number }[]} points */
 export function LineChartPanel({
   title,
+  tooltipText,
   points,
   height = 240,
   variant = "gold",
   embedded = false,
   /** Hide axes & grid — sparkline-style area chart */
   minimal = false,
+  /** Keep chart frame visible even when points are empty */
+  showEmptyFrame = false,
+  /** Grow to parent height (embedded); `height` is the minimum pixel height */
+  fillHeight = false,
 }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !points?.length) return undefined;
+    if (!el || (!points?.length && !showEmptyFrame)) return undefined;
+
+    const chartHeight = () =>
+      fillHeight ? Math.max(el.clientHeight || 0, height) : height;
 
     const chartOptions = minimal
       ? {
@@ -49,6 +59,7 @@ export function LineChartPanel({
             textColor: "transparent",
             fontSize: 1,
             fontFamily: "system-ui, sans-serif",
+            attributionLogo: false,
           },
           grid: {
             vertLines: { visible: false },
@@ -62,12 +73,12 @@ export function LineChartPanel({
             vertLine: { visible: false, labelVisible: false },
           },
           width: el.clientWidth,
-          height,
+          height: chartHeight(),
         }
       : {
           ...layoutOpts,
           width: el.clientWidth,
-          height,
+          height: chartHeight(),
         };
 
     const chart = createChart(el, chartOptions);
@@ -87,15 +98,21 @@ export function LineChartPanel({
           }
     );
     series.setData(
-      points.map((p) => ({
+      (points || []).map((p) => ({
         time: isoOrDateToTime(p.time),
         value: p.value,
       }))
     );
-    chart.timeScale().fitContent();
+    if (points?.length) chart.timeScale().fitContent();
 
     const ro = new ResizeObserver(() => {
-      if (el.clientWidth > 0) chart.applyOptions({ width: el.clientWidth });
+      if (el.clientWidth <= 0) return;
+      if (fillHeight) {
+        const h = Math.max(el.clientHeight, height);
+        if (h > 0) chart.applyOptions({ width: el.clientWidth, height: h });
+      } else {
+        chart.applyOptions({ width: el.clientWidth });
+      }
     });
     ro.observe(el);
 
@@ -103,7 +120,7 @@ export function LineChartPanel({
       ro.disconnect();
       chart.remove();
     };
-  }, [title, height, points, variant, minimal]);
+  }, [title, height, points, variant, minimal, showEmptyFrame, fillHeight]);
 
   const body = (
     <div
@@ -111,28 +128,38 @@ export function LineChartPanel({
         minimal && embedded
           ? "w-full"
           : embedded
-            ? "px-3 pb-3 pt-0"
+            ? fillHeight
+              ? "flex min-h-0 flex-1 flex-col px-3 pb-3 pt-0"
+              : "px-3 pb-3 pt-0"
             : title
               ? "px-3 pb-3 pt-0"
               : "px-3 pb-3 pt-3"
       }
     >
-      {!points?.length ? (
+      {!points?.length && !showEmptyFrame ? (
         <p
           className={`text-center text-xs text-muted ${
             minimal
-              ? `flex items-center justify-center font-sans border-b border-ink/[0.08]`
-              : "py-10 font-mono"
+              ? `flex items-center justify-center font-sans border-b border-ink/[0.08] leading-none`
+              : fillHeight
+                ? "flex min-h-0 flex-1 items-center justify-center py-10 font-mono"
+                : "py-10 font-mono"
           }`}
-          style={minimal ? { minHeight: height } : undefined}
+          style={
+            minimal
+              ? { minHeight: height }
+              : fillHeight
+                ? { minHeight: height }
+                : undefined
+          }
         >
           No data for this range.
         </p>
       ) : (
         <div
           ref={containerRef}
-          className={`w-full ${minimal ? "border-b border-ink/[0.08]" : ""}`}
-          style={{ height }}
+          className={`w-full ${fillHeight ? "min-h-0 flex-1" : ""} ${minimal ? "border-b border-ink/[0.08]" : ""}`}
+          style={fillHeight ? { minHeight: height } : { height }}
         />
       )}
     </div>
@@ -144,7 +171,7 @@ export function LineChartPanel({
     <section className="cs-card overflow-hidden">
       {title ? (
         <div className="cs-card-header pb-2">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
+          <CardHeaderTitle title={title} tooltipText={tooltipText} headingLevel={3} />
         </div>
       ) : null}
       {body}
@@ -156,7 +183,14 @@ export function LineChartPanel({
  * @param {{ date: string, value: number }[]} portfolio
  * @param {{ date: string, value: number }[]} benchmark
  */
-export function ComparisonChartPanel({ title, portfolio, benchmark, benchLabel, height = 260 }) {
+export function ComparisonChartPanel({
+  title,
+  tooltipText,
+  portfolio,
+  benchmark,
+  benchLabel,
+  height = 260,
+}) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -199,10 +233,12 @@ export function ComparisonChartPanel({ title, portfolio, benchmark, benchLabel, 
   return (
     <section className="cs-card overflow-hidden">
       <div className="cs-card-header pb-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
-        <p className="mt-3 text-[11px] leading-snug text-muted font-mono">
-          Indexed to 100 at first common date — compare your strategy to the ASX 200 proxy (total return).
-        </p>
+        <CardHeaderTitle
+          title={title}
+          tooltipText={tooltipText}
+          subtitle="Indexed to 100 at first common date — compare your strategy to the ASX 200 proxy (total return)."
+          headingLevel={3}
+        />
       </div>
       <div className="px-3 pb-3 pt-0">
         {empty ? (

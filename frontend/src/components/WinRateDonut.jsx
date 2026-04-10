@@ -1,15 +1,17 @@
+import CardHeaderTitle from "./CardHeaderTitle";
+
 /** @param {{ winning_sells: number, losing_sells: number, breakeven_sells: number }} breakdown */
-export default function WinRateDonut({ title, breakdown }) {
+export default function WinRateDonut({ title, tooltipText, breakdown }) {
   const { winning_sells: w, losing_sells: l, breakeven_sells: b } = breakdown;
   const t = w + l + b;
 
   return (
-    <section className="cs-card overflow-hidden p-5">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h3>
+    <section className="cs-card space-y-6 overflow-hidden p-5">
+      <CardHeaderTitle title={title} tooltipText={tooltipText} headingLevel={3} />
       {t === 0 ? (
-        <p className="mt-6 text-center text-xs font-mono text-muted">No sells in this range.</p>
+        <p className="text-center text-xs font-mono text-muted">No sells in this range.</p>
       ) : (
-        <div className="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-10">
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-10">
           <div className="relative h-36 w-36 shrink-0">
             <div
               className="absolute inset-0 rounded-full shadow-card-sm"

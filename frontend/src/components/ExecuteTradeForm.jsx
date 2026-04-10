@@ -3,10 +3,10 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatAud } from "../formatAud";
-import SectionHeading from "./SectionHeading";
+import CardHeaderTitle from "./CardHeaderTitle";
 
 function normalizeTickerInput(raw) {
-  const t = String(raw).trim().toUpperCase();
+  const t = raw == null ? "" : String(raw).trim().toUpperCase();
   if (!t) return "";
   if (t.startsWith("^")) return t;
   if (t.endsWith(".AX")) return t;
@@ -179,7 +179,11 @@ export default function ExecuteTradeForm({ onQuoteSymbol }) {
         e.preventDefault();
       }}
     >
-      <SectionHeading title="Execute trade" subtitle="ASX · previous close (EOD)" />
+      <CardHeaderTitle
+        title="Execute trade"
+        subtitle="ASX · previous close (EOD)"
+        tooltipText="Enter a ticker, quantity and submit to buy or sell at the previous day closing price."
+      />
 
       <div className="space-y-5 pt-2">
         <div>
@@ -234,9 +238,6 @@ export default function ExecuteTradeForm({ onQuoteSymbol }) {
             className="cs-input-mono cursor-not-allowed bg-black/[0.02] opacity-90"
             aria-busy={quoteLoading}
           />
-          <p className="mt-2 text-xs text-muted leading-snug">
-            End of day price — from Alpha Vantage daily OHLCV (cached per symbol per day).
-          </p>
           {quote?.as_of_date && !quoteLoading && (
             <p className="mt-1 text-[10px] text-muted font-mono">As of {quote.as_of_date} (close)</p>
           )}
@@ -251,17 +252,15 @@ export default function ExecuteTradeForm({ onQuoteSymbol }) {
 
         {orderExceedsTwentyPct && twentyPctThreshold != null && (
           <GoldNotice>
-            <p className="font-semibold text-ink font-sans">Large order</p>
-            <p className="mt-1 text-muted font-mono text-xs">
-              Order value exceeds 20% of portfolio ({formatAud(twentyPctThreshold)}).
-            </p>
+            <p className="font-semibold text-ink">Large order</p>
+            <p className="text-muted">Order value exceeds 20% of portfolio ({formatAud(twentyPctThreshold)}).</p>
           </GoldNotice>
         )}
 
         {showNoKey && (
           <GoldNotice>
-            <p className="font-semibold text-ink font-sans">API key required</p>
-            <p className="mt-1 text-muted">
+            <p className="font-semibold text-ink">API key required</p>
+            <p className="text-muted">
               Add your Alpha Vantage key under{" "}
               <Link to="/account" className="font-semibold text-gold underline-offset-2 hover:underline">
                 Account
@@ -273,8 +272,8 @@ export default function ExecuteTradeForm({ onQuoteSymbol }) {
 
         {remainingCashAfterBuy != null && remainingCashAfterBuy < -1e-6 && (
           <GoldNotice>
-            <p className="font-semibold text-danger font-sans">Insufficient cash</p>
-            <p className="mt-1 text-xs text-muted">Not enough cash at this price for the size entered.</p>
+            <p className="font-semibold text-danger">Insufficient cash</p>
+            <p className="text-muted">Not enough cash at this price for the size entered.</p>
           </GoldNotice>
         )}
 
@@ -283,8 +282,8 @@ export default function ExecuteTradeForm({ onQuoteSymbol }) {
           quote?.price &&
           holdingQuantity + 1e-9 < qtyNum && (
             <GoldNotice>
-              <p className="font-semibold text-danger font-sans">Insufficient shares</p>
-              <p className="mt-1 text-xs text-muted font-mono">
+              <p className="font-semibold text-danger">Insufficient shares to sell</p>
+              <p className="text-muted">
                 You hold {holdingQuantity} {normalizedTicker || "shares"}.
               </p>
             </GoldNotice>

@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import DailyReturnHistogram from "../components/DailyReturnHistogram";
 import { ComparisonChartPanel, LineChartPanel } from "../components/LineChartPanel";
 import PerStockPnlBars from "../components/PerStockPnlBars";
+import CardHeaderTitle from "../components/CardHeaderTitle";
 import SectionHeading from "../components/SectionHeading";
 import WinRateDonut from "../components/WinRateDonut";
 
@@ -67,18 +68,18 @@ export default function PerformanceReport() {
     <div className="space-y-6 md:space-y-8">
       <SectionHeading
         title="Performance"
-        subtitle="Strategy evaluation from your recorded trades and portfolio equity only — no live Alpha Vantage calls. Benchmark lines use cached EOD data when available."
+        subtitle="Pick a date range to review returns, risk, and how you compare to the benchmark."
+        tooltipText="Analyse how your trading strategy performed over a selected period."
       />
 
       <section className="cs-card overflow-hidden">
         <div className="cs-card-header pb-4 border-b border-ink/[0.06]">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Date range filter</h2>
-            {loading && <span className="text-xs font-mono text-muted">Loading…</span>}
-          </div>
-          <p className="mt-3 text-xs font-mono text-muted leading-relaxed max-w-3xl">
-            All six charts below use this range and refresh automatically when you change start or end.
-          </p>
+          <CardHeaderTitle
+            title="Date range filter"
+            tooltipText="Choose the period for all performance charts below."
+            subtitle="All six charts below use this range and refresh automatically when you change start or end."
+            right={loading ? <span className="text-xs font-mono text-muted">Loading…</span> : null}
+          />
         </div>
         <div className="flex flex-wrap items-end gap-4 p-5 pt-4">
           <div>
@@ -109,18 +110,30 @@ export default function PerformanceReport() {
           <div className="performance-span-full">
             <ComparisonChartPanel
               title="Portfolio value vs ASX 200 benchmark"
+              tooltipText="Compare your portfolio to the ASX 200 benchmark over the selected range."
               portfolio={report.portfolio_vs_benchmark?.portfolio || []}
               benchmark={report.portfolio_vs_benchmark?.benchmark || []}
               benchLabel={report.portfolio_vs_benchmark?.benchmark_label || "S&P/ASX 200"}
             />
           </div>
 
-          <DailyReturnHistogram title="Daily return %" rows={report.daily_return_bars || []} height={220} />
+          <DailyReturnHistogram
+            title="Daily return %"
+            tooltipText="Each bar is one day’s percentage change in portfolio value."
+            rows={report.daily_return_bars || []}
+            height={220}
+          />
 
-          <LineChartPanel title="Cumulative return %" points={cumulativePoints} height={220} />
+          <LineChartPanel
+            title="Cumulative return %"
+            tooltipText="Total percentage return since the start of the selected period."
+            points={cumulativePoints}
+            height={220}
+          />
 
           <WinRateDonut
             title="Win rate (sells)"
+            tooltipText="Share of completed sells that finished with a gain, a loss, or flat."
             breakdown={
               report.win_rate_breakdown ?? {
                 winning_sells: 0,
@@ -130,11 +143,16 @@ export default function PerformanceReport() {
             }
           />
 
-          <PerStockPnlBars title="P/L by stock" rows={report.per_stock_pnl || []} />
+          <PerStockPnlBars
+            title="P/L by stock"
+            tooltipText="Profit and loss attributed to each ticker over the selected range."
+            rows={report.per_stock_pnl || []}
+          />
 
           <div className="performance-span-full space-y-2">
             <LineChartPanel
               title="Drawdown from peak"
+              tooltipText="How far portfolio value fell below its running peak in the selected period."
               points={drawdownPoints}
               height={240}
               variant="danger"

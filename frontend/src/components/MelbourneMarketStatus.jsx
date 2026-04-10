@@ -9,31 +9,18 @@ function formatCountdown(totalSeconds) {
   return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-/** Compact "5h 18m" style for time until session close */
-function formatCloseCountdown(totalSeconds) {
-  if (totalSeconds == null || totalSeconds < 0) return "—";
-  if (totalSeconds < 60) return "<1m";
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  if (h > 0 && m > 0) return `${h}h ${m}m`;
-  if (h > 0) return `${h}h`;
-  return `${m}m`;
-}
-
-function formatMelbourneClock(nowDate) {
-  const parts = new Intl.DateTimeFormat("en-AU", {
+/** Format an instant in Australia/Melbourne (session close line, closed-state open time, etc.). */
+function formatMelbourneDateTime(nowDate) {
+  return new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Melbourne",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    timeZoneName: "short",
-  }).formatToParts(nowDate);
-  const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
-  const hour = get("hour");
-  const minute = get("minute");
-  const dayPeriod = (get("dayPeriod") || "").toLowerCase();
-  const tz = get("timeZoneName");
-  return `Melbourne ${hour}:${minute}${dayPeriod}${tz ? ` ${tz}` : ""}`;
+  }).format(nowDate);
 }
 
 function formatIndex(n) {
@@ -70,7 +57,12 @@ export default function MelbourneMarketStatus({ session, fetchedAt, asx200 }) {
     return fallback == null ? null : fallback;
   }, [session, fetchedAt, tick]);
 
-  const melbourneClock = useMemo(() => formatMelbourneClock(new Date()), [tick]);
+  /** Wall-clock session end in Melbourne (same instant as the "Closes in" countdown). */
+  const melbourneSessionCloseDisplay = useMemo(() => {
+    if (!session?.open || closeCountdownSeconds == null) return null;
+    const at = new Date(Date.now() + closeCountdownSeconds * 1000);
+    return formatMelbourneDateTime(at);
+  }, [session?.open, closeCountdownSeconds, tick]);
 
   if (!session) {
     return (
@@ -89,27 +81,30 @@ export default function MelbourneMarketStatus({ session, fetchedAt, asx200 }) {
         <span
           className={
             session.open
-              ? "inline-flex shrink-0 items-center rounded-full bg-profit/12 px-2.5 py-0.5 text-xs font-semibold text-profit"
-              : "inline-flex shrink-0 items-center rounded-full bg-danger/10 px-2.5 py-0.5 text-xs font-semibold text-danger"
+              ? "inline-flex shrink-0 items-center rounded-full border border-profit bg-profit/10 px-2.5 py-0.5 text-xs font-semibold text-profit"
+              : "inline-flex shrink-0 items-center rounded-full border border-danger bg-danger/10 px-2.5 py-0.5 text-xs font-semibold text-danger"
           }
         >
           {session.open ? "Market Open" : "Market Closed"}
         </span>
 
         {session.open && (
-          <span className="min-w-0 text-[11px] text-muted">
-            {melbourneClock}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
             {closeCountdownSeconds != null && (
-              <>
-                {" "}
-                <span className="text-ink/35">·</span>{" "}
-                <span className="text-ink/70">Closes in </span>
-                <span className="font-semibold tabular-nums text-ink">
-                  {formatCloseCountdown(closeCountdownSeconds)}
+              <span>
+                Closes in{" "}
+                <span className="font-mono font-semibold text-gold tabular-nums">
+                  {formatCountdown(closeCountdownSeconds)}
                 </span>
-              </>
+              </span>
             )}
-          </span>
+            {melbourneSessionCloseDisplay != null && (
+              <span>
+                {closeCountdownSeconds != null && <span>· </span>}
+                Melbourne {melbourneSessionCloseDisplay}
+              </span>
+            )}
+          </div>
         )}
 
         {!session.open && (

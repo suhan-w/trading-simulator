@@ -20,6 +20,7 @@ export default function SparklineCell({ points }) {
         background: { type: ColorType.Solid, color: "#ffffff" },
         textColor: "transparent",
         fontSize: 1,
+        attributionLogo: false,
       },
       grid: {
         vertLines: { visible: false },
