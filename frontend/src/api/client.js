@@ -90,4 +90,32 @@ export const api = {
 
   performanceReport: (start, end) =>
     request(`/api/performance/report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
+
+  performanceSummaryReport: (start, end) =>
+    request(
+      `/api/performance/summary-report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      { method: "POST" }
+    ),
+
+  async performanceSummaryReportPdfBlob(start, end) {
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const url = `${base}/api/performance/summary-report.pdf?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail ?? text);
+      } catch {
+        /* ignore */
+      }
+      throw new Error(typeof msg === "string" ? msg : res.statusText);
+    }
+    return res.blob();
+  },
+
+  runCodeBacktest: (body) => request("/api/backtest/run-code", { method: "POST", body }),
 };

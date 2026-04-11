@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import ExecuteTradeForm from "../components/ExecuteTradeForm";
@@ -8,6 +8,7 @@ import CardHeaderTitle from "../components/CardHeaderTitle";
 import SectionHeading from "../components/SectionHeading";
 import { formatAud } from "../formatAud";
 import { concentrationSliceColor } from "../constants/concentrationPalette";
+import { TRADE_STRATEGY_REMINDER_KEY } from "../constants/tradeReminder";
 
 /**
  * @param {{ holdings: Array<{ ticker: string, quantity: number, current_price: number, market_value: number, unrealized_pnl: number }> }} props
@@ -90,8 +91,19 @@ function TradeHoldingsTable({ holdings }) {
 
 export default function TradePage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [chartSymbol, setChartSymbol] = useState(null);
   const [portfolioData, setPortfolioData] = useState(null);
+  const [strategyReminder, setStrategyReminder] = useState("");
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(TRADE_STRATEGY_REMINDER_KEY);
+      if (raw) setStrategyReminder(raw);
+    } catch {
+      setStrategyReminder("");
+    }
+  }, [searchParams]);
 
   const loadPortfolio = useCallback(() => {
     api.portfolio().then(setPortfolioData).catch(() => setPortfolioData(null));
@@ -107,6 +119,20 @@ export default function TradePage() {
     return () => clearInterval(id);
   }, [user, loadPortfolio]);
 
+  const dismissStrategyReminder = useCallback(() => {
+    try {
+      sessionStorage.removeItem(TRADE_STRATEGY_REMINDER_KEY);
+    } catch {
+      /* ignore */
+    }
+    setStrategyReminder("");
+    if (searchParams.get("from")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("from");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   return (
     <div className="space-y-6 md:space-y-8">
       <SectionHeading
@@ -114,6 +140,31 @@ export default function TradePage() {
         subtitle="Place orders at the previous session’s closing price."
         tooltipText="Buy and sell ASX stocks at the previous session’s close; review a compact holdings snapshot below."
       />
+
+      {strategyReminder ? (
+        <div className="cs-card overflow-hidden border border-gold/30 shadow-card">
+          <div className="cs-card-header border-b border-ink/[0.06] pb-2">
+            <CardHeaderTitle
+              headingLevel={2}
+              title="Strategy signal rules (reminder)"
+              tooltipText="Python strategy from Backtesting. This app does not auto-trade from this code—use it only as a manual reference for paper orders."
+              subtitle="From your backtest — discretionary guide to entries, exits, and indicators."
+              right={
+                <button
+                  type="button"
+                  className="cs-btn-neutral shrink-0 px-3 py-1.5 text-xs font-semibold"
+                  onClick={dismissStrategyReminder}
+                >
+                  Dismiss
+                </button>
+              }
+            />
+          </div>
+          <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words bg-canvas px-4 py-3 font-mono text-[11px] leading-relaxed text-ink">
+            {strategyReminder}
+          </pre>
+        </div>
+      ) : null}
 
       {!user?.has_alpha_vantage_key && (
         <div className="cs-card px-5 py-4 text-sm text-muted">

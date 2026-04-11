@@ -17,6 +17,17 @@ const CONCENTRATION_TOP_N = 5;
 
 const PIE_EMPTY_COLOR = "#eae8e4";
 
+/** Total position value (same basis as the “Value” column). */
+function holdingPositionValue(h) {
+  if (h.market_value != null && h.market_value !== "") {
+    const mv = Number(h.market_value);
+    if (Number.isFinite(mv)) return mv;
+  }
+  const q = Number(h.quantity) || 0;
+  const p = Number(h.current_price) || 0;
+  return q * p;
+}
+
 function calendarRange(daysBack) {
   const end = new Date();
   const start = new Date();
@@ -137,6 +148,12 @@ export default function PortfolioPage() {
       cash: (cash / te) * 100,
       invested: (invested / te) * 100,
     };
+  }, [data]);
+
+  /** Largest position value first (matches Trade snapshot and the Value column). */
+  const holdingsSortedByValue = useMemo(() => {
+    if (!data?.holdings?.length) return [];
+    return [...data.holdings].sort((a, b) => holdingPositionValue(b) - holdingPositionValue(a));
   }, [data]);
 
   const concentrationRows = useMemo(() => {
@@ -273,7 +290,19 @@ export default function PortfolioPage() {
     <div className="space-y-6 md:space-y-8">
       <SectionHeading
         title="Portfolio"
-        subtitle="See value, holdings, and history—open Trade when you want to buy or sell."
+        subtitle={
+          <>
+            See value, holdings, and history—open{" "}
+            <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
+              Trade
+            </Link>{" "}
+            to buy or sell, or{" "}
+            <Link to="/backtest" className="font-semibold text-gold underline-offset-2 hover:underline">
+              Backtesting
+            </Link>{" "}
+            to run Python strategies on EOD data.
+          </>
+        }
         tooltipText="Track your virtual holdings and portfolio value over time."
         right={
           <button
@@ -538,7 +567,7 @@ export default function PortfolioPage() {
                     </tr>
                   </thead>
                   <tbody className="font-mono text-xs sm:text-sm">
-                    {data.holdings.map((h) => (
+                    {holdingsSortedByValue.map((h) => (
                       <tr
                         key={h.ticker}
                         role="button"

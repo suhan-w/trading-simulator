@@ -36,6 +36,8 @@ export function LineChartPanel({
   height = 240,
   variant = "gold",
   embedded = false,
+  /** No extra horizontal padding when embedded (e.g. Performance chart cards) */
+  embeddedTight = false,
   /** Hide axes & grid — sparkline-style area chart */
   minimal = false,
   /** Keep chart frame visible even when points are empty */
@@ -82,7 +84,7 @@ export function LineChartPanel({
         };
 
     const chart = createChart(el, chartOptions);
-    const series = chart.addAreaSeries(
+    const areaOpts =
       minimal
         ? {
             lineColor: GOLD,
@@ -90,13 +92,27 @@ export function LineChartPanel({
             bottomColor: "rgba(200, 150, 62, 0.04)",
             lineWidth: 3,
           }
-        : {
-            lineColor: GOLD,
-            topColor: FILL_TOP,
-            bottomColor: FILL_BOTTOM,
-            lineWidth: 2,
-          }
-    );
+        : variant === "danger"
+          ? {
+              lineColor: DANGER,
+              topColor: DANGER_TOP,
+              bottomColor: DANGER_BOTTOM,
+              lineWidth: 2,
+            }
+          : variant === "performance-drawdown"
+            ? {
+                lineColor: GOLD,
+                topColor: "rgba(200, 150, 62, 0.15)",
+                bottomColor: "rgba(200, 150, 62, 0.04)",
+                lineWidth: 2,
+              }
+            : {
+                lineColor: GOLD,
+                topColor: FILL_TOP,
+                bottomColor: FILL_BOTTOM,
+                lineWidth: 2,
+              };
+    const series = chart.addAreaSeries(areaOpts);
     series.setData(
       (points || []).map((p) => ({
         time: isoOrDateToTime(p.time),
@@ -127,20 +143,24 @@ export function LineChartPanel({
       className={
         minimal && embedded
           ? "w-full"
-          : embedded
+          : embedded && embeddedTight
             ? fillHeight
-              ? "flex min-h-0 flex-1 flex-col px-3 pb-3 pt-0"
-              : "px-3 pb-3 pt-0"
-            : title
-              ? "px-3 pb-3 pt-0"
-              : "px-3 pb-3 pt-3"
+              ? "flex min-h-0 w-full flex-1 flex-col"
+              : "w-full"
+            : embedded
+              ? fillHeight
+                ? "flex min-h-0 flex-1 flex-col px-3 pb-3 pt-0"
+                : "px-3 pb-3 pt-0"
+              : title
+                ? "px-3 pb-3 pt-0"
+                : "px-3 pb-3 pt-3"
       }
     >
       {!points?.length && !showEmptyFrame ? (
         <p
-          className={`text-center text-xs text-muted ${
+          className={`text-center text-sm text-[#888] ${
             minimal
-              ? `flex items-center justify-center font-sans border-b border-ink/[0.08] leading-none`
+              ? `flex items-center justify-center border-b border-ink/[0.08] font-sans leading-none`
               : fillHeight
                 ? "flex min-h-0 flex-1 items-center justify-center py-10 font-mono"
                 : "py-10 font-mono"
@@ -153,7 +173,7 @@ export function LineChartPanel({
                 : undefined
           }
         >
-          No data for this range.
+          No data available for this range
         </p>
       ) : (
         <div
@@ -179,17 +199,26 @@ export function LineChartPanel({
   );
 }
 
+const pctPriceFormat = {
+  type: "custom",
+  minMove: 0.01,
+  formatter: (p) => `${Number(p).toFixed(2)}%`,
+};
+
 /**
  * @param {{ date: string, value: number }[]} portfolio
  * @param {{ date: string, value: number }[]} benchmark
+ * @param {{ dailyPercentComparison?: boolean }} props
  */
 export function ComparisonChartPanel({
-  title,
-  tooltipText,
+  title = "",
+  tooltipText = "",
   portfolio,
   benchmark,
   benchLabel,
   height = 260,
+  embedded = false,
+  dailyPercentComparison = false,
 }) {
   const containerRef = useRef(null);
 
@@ -207,11 +236,13 @@ export function ComparisonChartPanel({
       topColor: FILL_TOP,
       bottomColor: FILL_BOTTOM,
       lineWidth: 2,
+      ...(dailyPercentComparison ? { priceFormat: pctPriceFormat } : {}),
     });
     const bSeries = chart.addLineSeries({
       color: "#aaaaaa",
       lineWidth: 2,
       title: benchLabel || "Benchmark",
+      ...(dailyPercentComparison ? { priceFormat: pctPriceFormat } : {}),
     });
     pSeries.setData(portfolio.map((p) => ({ time: isoOrDateToTime(p.date), value: p.value })));
     bSeries.setData(benchmark.map((p) => ({ time: isoOrDateToTime(p.date), value: p.value })));
@@ -226,9 +257,38 @@ export function ComparisonChartPanel({
       ro.disconnect();
       chart.remove();
     };
-  }, [title, height, benchLabel, portfolio, benchmark]);
+  }, [title, height, benchLabel, portfolio, benchmark, dailyPercentComparison]);
 
   const empty = !portfolio?.length || !benchmark?.length;
+
+  const legend = !empty && (
+    <div className="flex flex-wrap gap-x-6 gap-y-2 pt-2 text-[11px] font-mono text-[#aaa]">
+      <span className="font-semibold text-gold">Portfolio{dailyPercentComparison ? " (daily %)" : ""}</span>
+      <span>
+        {benchLabel}
+        {dailyPercentComparison ? " (daily %)" : ""}
+      </span>
+    </div>
+  );
+
+  const chartBody = empty ? (
+    <p className="py-10 text-center font-mono text-sm text-[#888]">No data available for this range</p>
+  ) : (
+    <div ref={containerRef} className="w-full" style={{ height }} />
+  );
+
+  if (embedded) {
+    return (
+      <div className="perf-comparison-embedded flex min-h-0 flex-1 flex-col">
+        <div
+          className={`perf-chart-area flex min-h-0 flex-1 flex-col ${empty ? "items-center justify-center" : ""}`}
+        >
+          {chartBody}
+        </div>
+        {legend}
+      </div>
+    );
+  }
 
   return (
     <section className="cs-card overflow-hidden">
@@ -236,23 +296,14 @@ export function ComparisonChartPanel({
         <CardHeaderTitle
           title={title}
           tooltipText={tooltipText}
-          subtitle="Indexed to 100 at first common date — compare your strategy to the ASX 200 proxy (total return)."
+          subtitle="Compare portfolio vs benchmark on the same timeline (indexed or daily %, depending on data source)."
           headingLevel={3}
         />
       </div>
       <div className="px-3 pb-3 pt-0">
-        {empty ? (
-          <p className="py-10 text-center text-xs font-mono text-muted">Not enough overlapping history in this range.</p>
-        ) : (
-          <div ref={containerRef} className="w-full" style={{ height }} />
-        )}
+        {chartBody}
       </div>
-      {!empty && (
-        <div className="flex flex-wrap gap-x-6 gap-y-2 px-5 pb-4 pt-0 text-[11px] font-mono">
-          <span className="font-semibold text-gold">Portfolio</span>
-          <span className="text-muted">{benchLabel}</span>
-        </div>
-      )}
+      {legend ? <div className="px-5 pb-4 pt-0">{legend}</div> : null}
     </section>
   );
 }

@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 
-export default function BrandMark() {
-  return (
-    <Link to="/" className="group flex items-center gap-3 shrink-0 min-w-0">
+/** @param {{ asStatic?: boolean }} props */
+export default function BrandMark({ asStatic = false }) {
+  const inner = (
+    <>
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-card bg-ink shadow-card-sm">
         <span className="text-[11px] font-bold tracking-tight text-white">CS</span>
       </div>
@@ -13,6 +14,14 @@ export default function BrandMark() {
         </span>
         <span className="text-xs text-muted">Paper trading · ASX · AUD</span>
       </div>
+    </>
+  );
+  if (asStatic) {
+    return <div className="flex items-center gap-3 shrink-0 min-w-0">{inner}</div>;
+  }
+  return (
+    <Link to="/" className="group flex items-center gap-3 shrink-0 min-w-0">
+      {inner}
     </Link>
   );
 }

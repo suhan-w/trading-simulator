@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,13 +16,44 @@ from app.schemas import (
     PerformanceReportOut,
     ReturnPctPoint,
     StockPnlBar,
+    SummaryBenchmarkComparisonOut,
+    SummaryHoldingRowOut,
+    SummaryMetricRowOut,
+    SummaryPortfolioActivityOut,
+    SummaryReportResponse,
+    SummaryStockRowOut,
+    SummaryTradeRowOut,
     TickerReturnRow,
     TradeHighlight,
     WinRateBreakdown,
 )
 from app.services.performance_service import build_performance_report
+from app.services.summary_report_service import build_executive_summary_bundle, summary_pdf_bytes
 
 router = APIRouter(prefix="/api/performance", tags=["performance"])
+
+
+def _summary_bundle_to_response(bundle: dict) -> SummaryReportResponse:
+    pvb = bundle["portfolio_vs_benchmark"]
+    return SummaryReportResponse(
+        generated_at=bundle["generated_at"],
+        date_range_label=bundle["date_range_label"],
+        start=bundle["start"],
+        end=bundle["end"],
+        benchmark_label=bundle["benchmark_label"],
+        executive_summary=bundle["executive_summary"],
+        metrics_table=[SummaryMetricRowOut(**r) for r in bundle["metrics_table"]],
+        portfolio_activity=SummaryPortfolioActivityOut(**bundle["portfolio_activity"]),
+        top_performers=[SummaryStockRowOut(**r) for r in bundle["top_performers"]],
+        worst_performers=[SummaryStockRowOut(**r) for r in bundle["worst_performers"]],
+        risk_assessment=bundle["risk_assessment"],
+        benchmark_comparison=SummaryBenchmarkComparisonOut(**bundle["benchmark_comparison"]),
+        conclusion=bundle["conclusion"],
+        trades=[SummaryTradeRowOut(**r) for r in bundle["trades"]],
+        holdings=[SummaryHoldingRowOut(**r) for r in bundle["holdings"]],
+        equity_curve=[EquityCurvePoint(**x) for x in bundle["equity_curve"]],
+        portfolio_vs_benchmark=BenchmarkSeriesOut(**pvb),
+    )
 
 
 @router.get("/report", response_model=PerformanceReportOut)
@@ -66,4 +98,43 @@ def performance_report(
         win_rate_breakdown=WinRateBreakdown(**raw["win_rate_breakdown"]),
         per_stock_pnl=[StockPnlBar(**x) for x in raw["per_stock_pnl"]],
         drawdown_series=[DrawdownPoint(**x) for x in raw["drawdown_series"]],
+        aligned_portfolio_return_pct=raw.get("aligned_portfolio_return_pct"),
+        aligned_benchmark_return_pct=raw.get("aligned_benchmark_return_pct"),
+        aligned_alpha_pct=raw.get("aligned_alpha_pct"),
+    )
+
+
+@router.post("/summary-report", response_model=SummaryReportResponse)
+def create_summary_report(
+    start: date = Query(..., description="Range start (inclusive)"),
+    end: date = Query(..., description="Range end (inclusive)"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        bundle = build_executive_summary_bundle(db, user, start, end)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    db.commit()
+    return _summary_bundle_to_response(bundle)
+
+
+@router.get("/summary-report.pdf")
+def download_summary_report_pdf(
+    start: date = Query(..., description="Range start (inclusive)"),
+    end: date = Query(..., description="Range end (inclusive)"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        data = summary_pdf_bytes(db, user, start, end)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    db.commit()
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="cowrie-shell-performance-summary.pdf"',
+        },
     )

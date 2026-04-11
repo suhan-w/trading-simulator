@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import BrandMark from "./BrandMark";
@@ -74,6 +74,10 @@ export default function Layout() {
               <NavLink to="/trade" className={navPill}>
                 Trade
               </NavLink>
+              <NavLink to="/backtest" className={navPill} title="Backtesting (Python strategies)">
+                <span className="sm:hidden">Backtest</span>
+                <span className="hidden sm:inline">Backtesting</span>
+              </NavLink>
               <NavLink to="/performance" className={navPill}>
                 Performance
               </NavLink>
@@ -93,6 +97,10 @@ export default function Layout() {
             </NavLink>
             <NavLink to="/trade" className={navPill}>
               Trade
+            </NavLink>
+            <NavLink to="/backtest" className={navPill} title="Backtesting (Python strategies)">
+              <span className="sm:hidden">Backtest</span>
+              <span className="hidden sm:inline">Backtesting</span>
             </NavLink>
             <NavLink to="/performance" className={navPill}>
               Performance
@@ -122,6 +130,40 @@ export default function Layout() {
       </main>
 
       <footer className="mt-auto py-4 px-4">
+        {user && (
+          <nav
+            className="mb-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-ink/[0.06] pb-3 text-[11px] font-semibold text-muted"
+            aria-label="Quick navigation"
+          >
+            <Link to="/" className="hover:text-ink">
+              Portfolio
+            </Link>
+            <span className="text-ink/[0.15]" aria-hidden>
+              ·
+            </span>
+            <Link to="/trade" className="hover:text-ink">
+              Trade
+            </Link>
+            <span className="text-ink/[0.15]" aria-hidden>
+              ·
+            </span>
+            <Link to="/backtest" className="text-gold hover:underline">
+              Backtesting
+            </Link>
+            <span className="text-ink/[0.15]" aria-hidden>
+              ·
+            </span>
+            <Link to="/performance" className="hover:text-ink">
+              Performance
+            </Link>
+            <span className="text-ink/[0.15]" aria-hidden>
+              ·
+            </span>
+            <Link to="/account" className="hover:text-ink">
+              Account
+            </Link>
+          </nav>
+        )}
         <p className="text-center text-xs leading-relaxed text-muted max-w-3xl mx-auto">
           <span className="font-semibold text-ink">Cowrie</span>
           <span className="font-semibold text-gold">Shell</span> · ASX Mon–Fri 10:00–16:00 Melbourne (AEST/AEDT);

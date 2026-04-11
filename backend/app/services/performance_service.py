@@ -251,28 +251,41 @@ def build_performance_report(
         bench_rows = market_service.closes_daily_from_series(bs, start, end_fetch)
     else:
         bench_rows = []
+    # Chart: aligned calendar dates, day-over-day % change for portfolio equity vs benchmark close.
     portfolio_norm: list[dict[str, Any]] = []
     benchmark_norm: list[dict[str, Any]] = []
+    aligned_portfolio_return_pct: float | None = None
+    aligned_benchmark_return_pct: float | None = None
+    aligned_alpha_pct: float | None = None
     if bench_rows and daily_pf:
         bench_by_date = {row["date"]: row["close"] for row in bench_rows}
         pf_by_date = {row["date"]: row["equity"] for row in daily_pf}
         common_dates = sorted(set(bench_by_date) & set(pf_by_date))
-        if common_dates:
-            d0 = common_dates[0]
-            p0 = pf_by_date[d0]
-            b0 = bench_by_date[d0]
-            for d in common_dates:
-                if p0 > 0 and b0 > 0:
+        if len(common_dates) >= 2:
+            d_first, d_last = common_dates[0], common_dates[-1]
+            p_first, p_last = pf_by_date[d_first], pf_by_date[d_last]
+            b_first, b_last = bench_by_date[d_first], bench_by_date[d_last]
+            if p_first > 0 and b_first > 0:
+                aligned_portfolio_return_pct = round((p_last / p_first - 1.0) * 100.0, 4)
+                aligned_benchmark_return_pct = round((b_last / b_first - 1.0) * 100.0, 4)
+                aligned_alpha_pct = round(
+                    float(aligned_portfolio_return_pct) - float(aligned_benchmark_return_pct), 4
+                )
+            for i in range(1, len(common_dates)):
+                d_prev, d = common_dates[i - 1], common_dates[i]
+                pp, p = pf_by_date[d_prev], pf_by_date[d]
+                bp, b = bench_by_date[d_prev], bench_by_date[d]
+                if pp > 0 and bp > 0:
                     portfolio_norm.append(
                         {
                             "date": d,
-                            "value": round(100.0 * pf_by_date[d] / p0, 4),
+                            "value": round((p / pp - 1.0) * 100.0, 4),
                         }
                     )
                     benchmark_norm.append(
                         {
                             "date": d,
-                            "value": round(100.0 * bench_by_date[d] / b0, 4),
+                            "value": round((b / bp - 1.0) * 100.0, 4),
                         }
                     )
 
@@ -343,6 +356,9 @@ def build_performance_report(
             "benchmark_symbol": market_service.BENCHMARK_SYMBOL_AV,
             "benchmark_label": market_service.BENCHMARK_LABEL,
         },
+        "aligned_portfolio_return_pct": aligned_portfolio_return_pct,
+        "aligned_benchmark_return_pct": aligned_benchmark_return_pct,
+        "aligned_alpha_pct": aligned_alpha_pct,
         "initial_equity": float(settings.initial_cash),
         "daily_return_bars": daily_return_bars,
         "cumulative_return_daily": cumulative_return_daily,

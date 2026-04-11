@@ -25,7 +25,13 @@ const layoutOpts = {
 };
 
 /** @param {{ date: string, return_pct: number }[]} rows */
-export default function DailyReturnHistogram({ title, tooltipText, rows, height = 220 }) {
+export default function DailyReturnHistogram({
+  title = "",
+  tooltipText = "",
+  rows,
+  height = 220,
+  embedded = false,
+}) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -60,18 +66,22 @@ export default function DailyReturnHistogram({ title, tooltipText, rows, height 
     };
   }, [rows, height]);
 
+  const body = !rows?.length ? (
+    <p className="py-10 text-center font-mono text-sm text-[#888]">No data available for this range</p>
+  ) : (
+    <div ref={containerRef} className="w-full" style={{ height }} />
+  );
+
+  if (embedded) {
+    return body;
+  }
+
   return (
     <section className="cs-card overflow-hidden">
       <div className="cs-card-header pb-2">
         <CardHeaderTitle title={title} tooltipText={tooltipText} headingLevel={3} />
       </div>
-      <div className="px-3 pb-3 pt-0">
-        {!rows?.length ? (
-          <p className="py-10 text-center text-xs font-mono text-muted">No daily data in this range.</p>
-        ) : (
-          <div ref={containerRef} className="w-full" style={{ height }} />
-        )}
-      </div>
+      <div className="px-3 pb-3 pt-0">{body}</div>
     </section>
   );
 }

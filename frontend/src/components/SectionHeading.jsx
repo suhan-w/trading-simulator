@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 
 /**
  * Page-level title: large bold title, grey subtitle, optional pixel tooltip.
- * @param {{ title: string, subtitle?: string, tooltipText?: string, className?: string, right?: import("react").ReactNode }} props
+ * @param {{ title: string, subtitle?: import("react").ReactNode, tooltipText?: string, className?: string, right?: import("react").ReactNode }} props
  */
 export default function SectionHeading({ title, subtitle, tooltipText, className = "", right = null }) {
   const [open, setOpen] = useState(false);

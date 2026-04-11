@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -187,6 +187,21 @@ class BacktestOut(BaseModel):
     strategy: str
 
 
+class CodeBacktestCodeIn(BaseModel):
+    """User strategy: define run(data) returning dates, equity, optional trades, etc."""
+
+    code: str = Field(..., min_length=1, max_length=100_000)
+    ticker: str = Field(..., min_length=1, max_length=32)
+    start: date
+    end: date
+
+
+class CodeBacktestCodeOut(BaseModel):
+    benchmark: str = "^AXJO"
+    metrics: dict[str, Any]
+    series: dict[str, Any]
+
+
 class OhlcvBarOut(BaseModel):
     date: str
     open: float
@@ -271,9 +286,82 @@ class PerformanceReportOut(BaseModel):
     trade_count: int
     sell_count: int
     portfolio_vs_benchmark: BenchmarkSeriesOut
+    # Total return first-to-last common day (same overlap as the vs-benchmark chart).
+    aligned_portfolio_return_pct: Optional[float] = None
+    aligned_benchmark_return_pct: Optional[float] = None
+    aligned_alpha_pct: Optional[float] = None
     initial_equity: float
     daily_return_bars: list[DailyReturnBar]
     cumulative_return_daily: list[CumulativeReturnPoint]
     win_rate_breakdown: WinRateBreakdown
     per_stock_pnl: list[StockPnlBar]
     drawdown_series: list[DrawdownPoint]
+
+
+class SummaryMetricRowOut(BaseModel):
+    name: str
+    value: str
+    interpretation: str
+
+
+class SummaryStockRowOut(BaseModel):
+    ticker: str
+    return_pct: Optional[float] = None
+    pnl: float
+
+
+class SummaryPortfolioActivityOut(BaseModel):
+    starting_value: Optional[float] = None
+    ending_value: Optional[float] = None
+    cash_remaining: float
+    buy_trades: int
+    sell_trades: int
+    most_traded_ticker: Optional[str] = None
+    most_traded_count: int = 0
+
+
+class SummaryBenchmarkComparisonOut(BaseModel):
+    strategy_period_return_pct: Optional[float] = None
+    benchmark_period_return_pct: Optional[float] = None
+    excess_return_pct: Optional[float] = None
+    benchmark_label: str
+
+
+class SummaryTradeRowOut(BaseModel):
+    id: int
+    ticker: str
+    side: str
+    quantity: float
+    price: float
+    total: float
+    executed_at: Optional[str] = None
+
+
+class SummaryHoldingRowOut(BaseModel):
+    ticker: str
+    quantity: float
+    avg_cost: float
+    current_price: float
+    market_value: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+
+
+class SummaryReportResponse(BaseModel):
+    generated_at: str
+    date_range_label: str
+    start: str
+    end: str
+    benchmark_label: str
+    executive_summary: str
+    metrics_table: list[SummaryMetricRowOut]
+    portfolio_activity: SummaryPortfolioActivityOut
+    top_performers: list[SummaryStockRowOut]
+    worst_performers: list[SummaryStockRowOut]
+    risk_assessment: str
+    benchmark_comparison: SummaryBenchmarkComparisonOut
+    conclusion: str
+    trades: list[SummaryTradeRowOut]
+    holdings: list[SummaryHoldingRowOut]
+    equity_curve: list[EquityCurvePoint]
+    portfolio_vs_benchmark: BenchmarkSeriesOut
