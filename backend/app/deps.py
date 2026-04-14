@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models import User
 from app.security import decode_token
 
@@ -35,6 +35,46 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+def get_bearer_user_id(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> int:
+    """Resolve authenticated user id without tying up a request-scoped DB session.
+
+    Use for long-running handlers (e.g. sandboxed backtests) so pool connections are
+    not held for the full request duration.
+    """
+    if creds is None or not creds.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    payload = decode_token(creds.credentials)
+    if payload is None or "sub" not in payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+    try:
+        user_id = int(payload["sub"])
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+    db = SessionLocal()
+    try:
+        exists = db.query(User.id).filter(User.id == user_id).first()
+    finally:
+        db.close()
+    if exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    return user_id
 
 
 def require_alpha_vantage_api_key(user: User) -> str:

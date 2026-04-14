@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -30,6 +30,8 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     alpha_vantage_api_key = Column(String(512), nullable=True)
+    anon_user_id = Column(String(24), unique=True, index=True, nullable=True)
+    anon_strategy_seq = Column(Integer, nullable=False, default=0)
     cash_balance = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -107,3 +109,28 @@ class AvDailyUsage(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     usage_date = Column(Date, nullable=False, index=True)
     request_count = Column(Integer, nullable=False, default=0)
+
+
+class LeaderboardEntry(Base):
+    """Anonymous strategy performance row; usernames never exposed via API."""
+
+    __tablename__ = "leaderboard_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    anon_id = Column(Integer, unique=True, nullable=False, index=True)
+    strategy_seq = Column(Integer, nullable=False, default=0)
+    source = Column(String(16), nullable=False)
+    ticker = Column(String(32), nullable=True)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    total_return_pct = Column(Float, nullable=False)
+    sharpe_ratio = Column(Float, nullable=True)
+    max_drawdown_pct = Column(Float, nullable=True)
+    win_rate_pct = Column(Float, nullable=True)
+    trade_count = Column(Integer, nullable=False, default=0)
+    share_public = Column(Boolean, nullable=False, default=False)
+    strategy_code = Column(Text, nullable=True)
+    strategy_visual_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

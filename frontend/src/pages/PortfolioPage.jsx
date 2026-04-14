@@ -297,10 +297,10 @@ export default function PortfolioPage() {
               Trade
             </Link>{" "}
             to buy or sell, or{" "}
-            <Link to="/backtest" className="font-semibold text-gold underline-offset-2 hover:underline">
-              Backtesting
+            <Link to="/strategy" className="font-semibold text-gold underline-offset-2 hover:underline">
+              Strategy
             </Link>{" "}
-            to run Python strategies on EOD data.
+            to build and backtest on EOD data.
           </>
         }
         tooltipText="Track your virtual holdings and portfolio value over time."
@@ -360,7 +360,7 @@ export default function PortfolioPage() {
         <div className="portfolio-layout">
           <div className="portfolio-chart-cell flex h-full min-h-0 flex-col gap-[var(--portfolio-layout-gap)]">
             <div className="metric-strip-container shrink-0">
-              <div className="portfolio-metric-strip">
+            <div className="portfolio-metric-strip">
                 <div className="metric-strip-card">
                 <p className="metric-strip-label">Cash</p>
                 <p className={`metric-strip-value ${data != null ? "metric-strip-value--cash" : "metric-strip-value--neutral"}`}>
@@ -414,18 +414,18 @@ export default function PortfolioPage() {
                   title="Portfolio value"
                   tooltipText="Total value of your cash and holdings over time."
                   right={
-                    <div className="flex flex-wrap gap-2">
-                      {["1W", "1M", "3M", "1Y"].map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setRangeTab(key)}
-                          className={`cs-btn-neutral px-3 py-2 ${rangeTab === key ? "ring-2 ring-gold/40 text-ink" : ""}`}
-                        >
-                          {key}
-                        </button>
-                      ))}
-                    </div>
+                <div className="flex flex-wrap gap-2">
+                  {["1W", "1M", "3M", "1Y"].map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setRangeTab(key)}
+                      className={`cs-btn-neutral px-3 py-2 ${rangeTab === key ? "ring-2 ring-gold/40 text-ink" : ""}`}
+                    >
+                      {key}
+                    </button>
+                  ))}
+                </div>
                   }
                 />
               </div>
@@ -628,13 +628,13 @@ export default function PortfolioPage() {
                       titleClassName="min-w-0 truncate normal-case"
                       tooltipText="Price history for the selected holding (end-of-day close)."
                       right={
-                        <button
-                          type="button"
-                          className="cs-btn-neutral text-xs shrink-0 self-start sm:self-auto"
-                          onClick={() => setSelectedTicker(null)}
-                        >
-                          Clear selection
-                        </button>
+                    <button
+                      type="button"
+                      className="cs-btn-neutral text-xs shrink-0 self-start sm:self-auto"
+                      onClick={() => setSelectedTicker(null)}
+                    >
+                      Clear selection
+                    </button>
                       }
                     />
                   </div>

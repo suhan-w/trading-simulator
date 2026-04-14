@@ -9,8 +9,9 @@ from app.services import melbourne_asx
 from app.services.order_service import process_pending_orders_for_user
 
 
-def build_portfolio(db: Session, user: User) -> dict:
-    process_pending_orders_for_user(db, user)
+def build_portfolio(db: Session, user: User) -> tuple[dict, int]:
+    """Return portfolio snapshot and count of limit orders filled in this call."""
+    filled = process_pending_orders_for_user(db, user)
     db.refresh(user)
     holdings_rows = db.query(Holding).filter(Holding.user_id == user.id).all()
     tickers = [h.ticker for h in holdings_rows]
@@ -44,19 +45,26 @@ def build_portfolio(db: Session, user: User) -> dict:
     total_equity = user.cash_balance + market_value_sum
     total_return_pct = ((total_equity - initial) / initial) * 100 if initial else 0.0
 
-    return {
-        "cash_balance": user.cash_balance,
-        "initial_equity": initial,
-        "total_equity": total_equity,
-        "total_unrealized_pnl": total_unrealized,
-        "total_return_pct": total_return_pct,
-        "holdings": holdings_out,
-    }
+    return (
+        {
+            "cash_balance": user.cash_balance,
+            "initial_equity": initial,
+            "total_equity": total_equity,
+            "total_unrealized_pnl": total_unrealized,
+            "total_return_pct": total_return_pct,
+            "holdings": holdings_out,
+        },
+        filled,
+    )
 
 
-def equity_history_points(db: Session, user: User) -> list[dict]:
-    """Time series: start cash + after each trade + current (for charts and reports)."""
-    data = build_portfolio(db, user)
+def equity_history_points(db: Session, user: User) -> tuple[list[dict], int, dict]:
+    """Time series: start cash + after each trade + current (for charts and reports).
+
+    Second value is limit-order fills from the embedded build_portfolio (for background tasks).
+    Third value is the portfolio snapshot dict from that same build (avoids a second build_portfolio in reports).
+    """
+    data, filled = build_portfolio(db, user)
     cur = data["total_equity"]
     db.refresh(user)
     initial = float(settings.initial_cash)
@@ -87,7 +95,7 @@ def equity_history_points(db: Session, user: User) -> list[dict]:
     if not points or abs(points[-1]["equity"] - cur) > 0.005:
         points.append({"time": now, "equity": cur})
 
-    return points
+    return points, filled, data
 
 
 def _equity_ts(iso: str) -> datetime:

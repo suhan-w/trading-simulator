@@ -16,6 +16,7 @@ from app.schemas import (
     user_to_out,
 )
 from app.security import create_access_token, hash_password, verify_password
+from app.services import leaderboard_service
 from app.services.reset_service import reset_user_simulation
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -36,6 +37,8 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    leaderboard_service.ensure_user_anon_id(db, user)
+    db.commit()
     token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token)
 
@@ -44,7 +47,10 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
 def login(body: LoginIn, db: Session = Depends(get_db)):
     email = body.email.strip().lower()
     user = db.query(User).filter(User.email == email).first()
-    if user is None or not verify_password(body.password, user.hashed_password):
+    pw_ok = False
+    if user is not None and user.hashed_password:
+        pw_ok = verify_password(body.password, user.hashed_password)
+    if user is None or not pw_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -68,6 +74,8 @@ def guest_session(db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    leaderboard_service.ensure_user_anon_id(db, user)
+    db.commit()
     token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token)
 

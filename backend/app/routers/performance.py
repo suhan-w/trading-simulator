@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -20,13 +20,16 @@ from app.schemas import (
     SummaryHoldingRowOut,
     SummaryMetricRowOut,
     SummaryPortfolioActivityOut,
+    SummaryReportRequestIn,
     SummaryReportResponse,
     SummaryStockRowOut,
+    SummaryStrategyContextOut,
     SummaryTradeRowOut,
     TickerReturnRow,
     TradeHighlight,
     WinRateBreakdown,
 )
+from app.services import leaderboard_service
 from app.services.performance_service import build_performance_report
 from app.services.summary_report_service import build_executive_summary_bundle, summary_pdf_bytes
 
@@ -35,6 +38,7 @@ router = APIRouter(prefix="/api/performance", tags=["performance"])
 
 def _summary_bundle_to_response(bundle: dict) -> SummaryReportResponse:
     pvb = bundle["portfolio_vs_benchmark"]
+    sc = bundle.get("strategy_context")
     return SummaryReportResponse(
         generated_at=bundle["generated_at"],
         date_range_label=bundle["date_range_label"],
@@ -53,22 +57,26 @@ def _summary_bundle_to_response(bundle: dict) -> SummaryReportResponse:
         holdings=[SummaryHoldingRowOut(**r) for r in bundle["holdings"]],
         equity_curve=[EquityCurvePoint(**x) for x in bundle["equity_curve"]],
         portfolio_vs_benchmark=BenchmarkSeriesOut(**pvb),
+        strategy_context=SummaryStrategyContextOut(**sc) if sc else None,
     )
 
 
 @router.get("/report", response_model=PerformanceReportOut)
 def performance_report(
+    background_tasks: BackgroundTasks,
     start: date = Query(..., description="Range start (inclusive)"),
     end: date = Query(..., description="Range end (inclusive)"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     try:
-        raw = build_performance_report(db, user, start, end)
+        raw, n_filled_limits = build_performance_report(db, user, start, end)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     # Same as portfolio GET: persist any limit fills from process_pending_orders inside build_portfolio.
     db.commit()
+    if n_filled_limits > 0:
+        background_tasks.add_task(leaderboard_service.refresh_paper_snapshot_in_new_session, user.id)
 
     pvb = raw["portfolio_vs_benchmark"]
     bench = BenchmarkSeriesOut(
@@ -106,31 +114,74 @@ def performance_report(
 
 @router.post("/summary-report", response_model=SummaryReportResponse)
 def create_summary_report(
-    start: date = Query(..., description="Range start (inclusive)"),
-    end: date = Query(..., description="Range end (inclusive)"),
+    background_tasks: BackgroundTasks,
+    body: SummaryReportRequestIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     try:
-        bundle = build_executive_summary_bundle(db, user, start, end)
+        bundle, n_filled_limits = build_executive_summary_bundle(
+            db,
+            user,
+            body.start,
+            body.end,
+            strategy_title=body.strategy_title,
+            strategy_notes=body.strategy_notes,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     db.commit()
+    if n_filled_limits > 0:
+        background_tasks.add_task(leaderboard_service.refresh_paper_snapshot_in_new_session, user.id)
     return _summary_bundle_to_response(bundle)
+
+
+@router.post("/summary-report.pdf")
+def download_summary_report_pdf_post(
+    background_tasks: BackgroundTasks,
+    body: SummaryReportRequestIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        data, n_filled_limits = summary_pdf_bytes(
+            db,
+            user,
+            body.start,
+            body.end,
+            strategy_title=body.strategy_title,
+            strategy_notes=body.strategy_notes,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    db.commit()
+    if n_filled_limits > 0:
+        background_tasks.add_task(leaderboard_service.refresh_paper_snapshot_in_new_session, user.id)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="cowrie-shell-performance-summary.pdf"',
+        },
+    )
 
 
 @router.get("/summary-report.pdf")
 def download_summary_report_pdf(
+    background_tasks: BackgroundTasks,
     start: date = Query(..., description="Range start (inclusive)"),
     end: date = Query(..., description="Range end (inclusive)"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """PDF without optional strategy context (backward compatible). Prefer POST /summary-report.pdf."""
     try:
-        data = summary_pdf_bytes(db, user, start, end)
+        data, n_filled_limits = summary_pdf_bytes(db, user, start, end)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     db.commit()
+    if n_filled_limits > 0:
+        background_tasks.add_task(leaderboard_service.refresh_paper_snapshot_in_new_session, user.id)
     return Response(
         content=data,
         media_type="application/pdf",

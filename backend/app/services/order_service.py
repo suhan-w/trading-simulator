@@ -207,4 +207,9 @@ def process_pending_orders_for_user(db: Session, user: User) -> int:
             order.status = OrderStatus.PENDING.value
             order.filled_price = None
             order.filled_at = None
+    # Do NOT call leaderboard_service.refresh_paper_snapshot here: it runs
+    # build_performance_report → equity_history_points → build_portfolio →
+    # process_pending again on the same Session and can deadlock PostgreSQL
+    # or hang workers (Portfolio / Performance "loading forever" when limits fill).
+    # Paper leaderboard is refreshed after market orders in routers/orders.py.
     return filled

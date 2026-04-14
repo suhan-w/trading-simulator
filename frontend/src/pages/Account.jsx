@@ -160,8 +160,8 @@ export default function Account() {
               <div>
                 <div className="cs-label mb-1">Member since</div>
                 <p className="text-sm text-ink">{memberSince}</p>
-              </div>
-              <div>
+        </div>
+        <div>
                 <div className="cs-label mb-1">Starting capital</div>
                 <p className="font-mono text-lg font-bold tabular-nums text-gold">{formatAud(startingCapital)}</p>
               </div>
@@ -172,30 +172,30 @@ export default function Account() {
         <div className="api-card cs-card flex flex-col p-5 md:p-6">
           <h2 className="mb-5 text-sm font-semibold text-ink normal-case">Alpha Vantage API Key</h2>
           <form onSubmit={onSave} className="flex flex-1 flex-col gap-5">
-            <div>
+          <div>
               <label htmlFor="account-api-key" className="cs-label mb-2">
                 API key
               </label>
-              <input
+            <input
                 id="account-api-key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={user?.has_alpha_vantage_key ? "Enter a new key to replace" : "Paste your API key"}
-                className="cs-input-mono"
-                autoComplete="off"
-              />
-            </div>
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={user?.has_alpha_vantage_key ? "Enter a new key to replace" : "Paste your API key"}
+              className="cs-input-mono"
+              autoComplete="off"
+            />
+          </div>
             <p className="text-xs leading-relaxed text-muted">
               Free key from{" "}
-              <a
-                href="https://www.alphavantage.co/support/#api-key"
-                className="font-semibold text-gold underline-offset-2 hover:underline"
-                target="_blank"
-                rel="noreferrer"
-              >
-                alphavantage.co
-              </a>
+          <a
+            href="https://www.alphavantage.co/support/#api-key"
+            className="font-semibold text-gold underline-offset-2 hover:underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            alphavantage.co
+          </a>
               . ~5 calls/min; end-of-day ASX prices count toward your daily quota below.
             </p>
             <div>

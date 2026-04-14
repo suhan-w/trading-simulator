@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import { listBacktestRunsInRange } from "../constants/backtestRunHistoryStorage";
 import CardHeaderTitle from "../components/CardHeaderTitle";
-import PerformanceSummaryModal from "../components/PerformanceSummaryModal";
 import SectionHeading from "../components/SectionHeading";
+import TradingPerformanceReportModal from "../components/TradingPerformanceReportModal";
 import DailyReturnHistogram from "../components/DailyReturnHistogram";
 import { ComparisonChartPanel, LineChartPanel } from "../components/LineChartPanel";
 import PerStockPnlBars from "../components/PerStockPnlBars";
@@ -85,9 +87,14 @@ export default function PerformanceReport() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [summaryOpen, setSummaryOpen] = useState(false);
-  const [summaryData, setSummaryData] = useState(null);
-  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [tprOpen, setTprOpen] = useState(false);
+  const [tprSummary, setTprSummary] = useState(null);
+  const [tprBusy, setTprBusy] = useState(false);
+  const [tprGenAt, setTprGenAt] = useState("");
+  const { user } = useAuth();
+
+  const username = user?.email || user?.username || "Guest";
+  const backtestRuns = useMemo(() => listBacktestRunsInRange(start, end), [start, end]);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,10 +105,10 @@ export default function PerformanceReport() {
       .then((r) => {
         if (!cancelled) setReport(r);
       })
-      .catch(() => {
+      .catch((e) => {
         if (!cancelled) {
           setReport(null);
-          setError("nodata");
+          setError(e instanceof Error ? e.message : String(e));
         }
       })
       .finally(() => {
@@ -132,18 +139,20 @@ export default function PerformanceReport() {
     [report]
   );
 
-  const generateSummaryReport = useCallback(async () => {
-    setSummaryBusy(true);
+  const openTradingReport = useCallback(async () => {
+    if (!report || loading || error) return;
+    setTprBusy(true);
     try {
-      const data = await api.performanceSummaryReport(start, end);
-      setSummaryData(data);
-      setSummaryOpen(true);
+      const data = await api.performanceSummaryReport(start, end, {});
+      setTprSummary(data);
+      setTprGenAt(new Date().toISOString());
+      setTprOpen(true);
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e));
     } finally {
-      setSummaryBusy(false);
+      setTprBusy(false);
     }
-  }, [start, end]);
+  }, [start, end, report, loading, error]);
 
   const maxDdTone = kpis != null && Number(kpis.maxDd) < 0 ? "danger" : "ink";
   const totalReturnTone =
@@ -156,16 +165,50 @@ export default function PerformanceReport() {
   return (
     <div className="performance-page">
       <header className="perf-span-full">
-        <SectionHeading
-          title="Performance"
-          subtitle="Pick a date range to review returns, risk, and how you compare to the benchmark."
-          tooltipText="Paper-trading portfolio metrics for the selected dates: cumulative return, drawdown, daily return distribution, win rate on sells, per-stock P/L, and portfolio vs the ASX benchmark. Figures use your paper fills and marks."
-        />
+        <div className="perf-page-header-row">
+          <div className="min-w-0">
+            <SectionHeading
+              title="Performance"
+              subtitle="Pick a date range to review returns, risk, and how you compare to the benchmark."
+              tooltipText="Paper-trading portfolio metrics for the selected dates: cumulative return, drawdown, daily return distribution, win rate on sells, per-stock P/L, and portfolio vs the ASX benchmark. Figures use your paper fills and marks."
+            />
+          </div>
+          <button
+            type="button"
+            className="perf-generate-report-btn shrink-0"
+            disabled={loading || !report || !!error || tprBusy}
+            onClick={() => void openTradingReport()}
+          >
+            {tprBusy ? (
+              <>
+                <span className="perf-btn-spinner" aria-hidden />
+                Generating…
+              </>
+            ) : (
+              "Generate Report"
+            )}
+          </button>
+        </div>
         <div className="perf-backtest-banner">
           You&apos;re viewing live paper trading performance. Want to test a strategy on historical data first?{" "}
-          <Link to="/backtest">Run a backtest →</Link>
+          <Link to="/strategy">Run a backtest →</Link>
         </div>
       </header>
+
+      <TradingPerformanceReportModal
+        open={tprOpen}
+        onClose={() => {
+          setTprOpen(false);
+          setTprSummary(null);
+        }}
+        report={report}
+        summary={tprSummary}
+        username={username}
+        start={start}
+        end={end}
+        generatedAt={tprGenAt}
+        backtestRuns={backtestRuns}
+      />
 
       <div className="perf-date-bar perf-span-full">
         <div className="perf-date-bar-row">
@@ -188,34 +231,17 @@ export default function PerformanceReport() {
               {loading ? <span className="font-mono text-[11px] text-[#aaa]">Loading…</span> : null}
             </div>
           </div>
-          <div className="perf-date-bar-actions">
-            <button
-              type="button"
-              className="perf-generate-report-btn"
-              disabled={loading || !report || !!error || summaryBusy}
-              onClick={() => void generateSummaryReport()}
-            >
-              {summaryBusy ? "Generating…" : "Generate Report"}
-            </button>
-          </div>
         </div>
       </div>
-
-      <PerformanceSummaryModal
-        open={summaryOpen}
-        onClose={() => setSummaryOpen(false)}
-        start={start}
-        end={end}
-        data={summaryData}
-      />
 
       {loading && !report ? (
         <p className="perf-span-full py-10 text-center font-mono text-sm text-[#aaa]">Loading…</p>
       ) : null}
 
       {error ? (
-        <div className="perf-span-full py-16 text-center font-mono text-sm text-[#888]">
-          <p>No data available for this range</p>
+        <div className="perf-span-full py-16 text-center font-mono text-sm text-danger">
+          <p className="font-semibold text-ink">Could not load performance data</p>
+          <p className="mt-2 text-[#888]">{error}</p>
         </div>
       ) : null}
 

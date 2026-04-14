@@ -39,9 +39,19 @@ function Section({ title, children }) {
  *   start: string;
  *   end: string;
  *   data: object | null;
+ *   strategyTitle?: string;
+ *   strategyNotes?: string;
  * }} props
  */
-export default function PerformanceSummaryModal({ open, onClose, start, end, data }) {
+export default function PerformanceSummaryModal({
+  open,
+  onClose,
+  start,
+  end,
+  data,
+  strategyTitle = "",
+  strategyNotes = "",
+}) {
   const [pdfBusy, setPdfBusy] = useState(false);
 
   useEffect(() => {
@@ -61,7 +71,10 @@ export default function PerformanceSummaryModal({ open, onClose, start, end, dat
   const downloadPdf = useCallback(async () => {
     setPdfBusy(true);
     try {
-      const blob = await api.performanceSummaryReportPdfBlob(start, end);
+      const extras = {};
+      if (strategyTitle.trim()) extras.strategyTitle = strategyTitle.trim();
+      if (strategyNotes.trim()) extras.strategyNotes = strategyNotes.trim();
+      const blob = await api.performanceSummaryReportPdfBlob(start, end, extras);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -73,7 +86,7 @@ export default function PerformanceSummaryModal({ open, onClose, start, end, dat
     } finally {
       setPdfBusy(false);
     }
-  }, [start, end]);
+  }, [start, end, strategyTitle, strategyNotes]);
 
   if (!open || !data) return null;
 
@@ -108,6 +121,22 @@ export default function PerformanceSummaryModal({ open, onClose, start, end, dat
         </header>
 
         <div className="perf-summary-scroll">
+          {(data.strategy_context?.strategy_title || data.strategy_context?.strategy_notes) && (
+            <Section title="Strategy context (you provided)">
+              <div className="space-y-2 text-sm text-ink">
+                {data.strategy_context?.strategy_title ? (
+                  <p className="m-0">
+                    <span className="font-semibold">Approach: </span>
+                    {data.strategy_context.strategy_title}
+                  </p>
+                ) : null}
+                {data.strategy_context?.strategy_notes ? (
+                  <p className="m-0 whitespace-pre-wrap leading-snug">{data.strategy_context.strategy_notes}</p>
+                ) : null}
+              </div>
+            </Section>
+          )}
+
           <Section title="Executive summary">
             <p className="perf-summary-prose">{data.executive_summary}</p>
           </Section>

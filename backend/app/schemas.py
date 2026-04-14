@@ -33,14 +33,20 @@ def user_to_out(user: User, db: Session | None = None) -> UserOut:
     used = 0
     limit = settings.alpha_vantage_daily_request_limit
     if db is not None:
-        from app.services import av_cache_service
+        try:
+            from app.services import av_cache_service
 
-        used = av_cache_service.get_usage_today(db, user.id)
+            used = av_cache_service.get_usage_today(db, user.id)
+        except Exception:
+            used = 0
+    created_at = user.created_at
+    if created_at is None:
+        created_at = datetime.utcfromtimestamp(0)
     return UserOut(
         id=user.id,
         email=user.email,
         cash_balance=user.cash_balance,
-        created_at=user.created_at,
+        created_at=created_at,
         is_guest=user.email.endswith("@guest.local"),
         has_alpha_vantage_key=bool((user.alpha_vantage_api_key or "").strip()),
         alpha_vantage_requests_used_today=used,
@@ -106,12 +112,13 @@ class OrderOut(BaseModel):
     filled_at: Optional[datetime] = None
     created_at_melbourne: str
     filled_at_melbourne: Optional[str] = None
+    paper_leaderboard_entry_id: Optional[int] = None
 
     class Config:
         from_attributes = True
 
 
-def order_to_out(o: Order) -> OrderOut:
+def order_to_out(o: Order, *, paper_leaderboard_entry_id: Optional[int] = None) -> OrderOut:
     return OrderOut(
         id=o.id,
         ticker=o.ticker,
@@ -125,6 +132,7 @@ def order_to_out(o: Order) -> OrderOut:
         filled_at=o.filled_at,
         created_at_melbourne=melbourne_asx.utc_naive_to_melbourne_iso(o.created_at) if o.created_at else "",
         filled_at_melbourne=melbourne_asx.utc_naive_to_melbourne_iso(o.filled_at) if o.filled_at else None,
+        paper_leaderboard_entry_id=paper_leaderboard_entry_id,
     )
 
 
@@ -194,12 +202,14 @@ class CodeBacktestCodeIn(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=32)
     start: date
     end: date
+    visual_json: Optional[str] = Field(None, max_length=500_000)
 
 
 class CodeBacktestCodeOut(BaseModel):
     benchmark: str = "^AXJO"
     metrics: dict[str, Any]
     series: dict[str, Any]
+    leaderboard_entry_id: Optional[int] = None
 
 
 class OhlcvBarOut(BaseModel):
@@ -327,6 +337,20 @@ class SummaryBenchmarkComparisonOut(BaseModel):
     benchmark_label: str
 
 
+class SummaryStrategyContextOut(BaseModel):
+    """User-supplied label / notes (e.g. thesis from a backtest) included with this summary only."""
+
+    strategy_title: Optional[str] = None
+    strategy_notes: Optional[str] = None
+
+
+class SummaryReportRequestIn(BaseModel):
+    start: date
+    end: date
+    strategy_title: Optional[str] = Field(None, max_length=200)
+    strategy_notes: Optional[str] = Field(None, max_length=4000)
+
+
 class SummaryTradeRowOut(BaseModel):
     id: int
     ticker: str
@@ -365,3 +389,78 @@ class SummaryReportResponse(BaseModel):
     holdings: list[SummaryHoldingRowOut]
     equity_curve: list[EquityCurvePoint]
     portfolio_vs_benchmark: BenchmarkSeriesOut
+    strategy_context: Optional[SummaryStrategyContextOut] = None
+
+
+class LeaderboardRowOut(BaseModel):
+    id: int
+    anon_id: int
+    strategy_seq: int
+    strategy_label: str
+    source: str
+    ticker: Optional[str] = None
+    period_start: date
+    period_end: date
+    value: float
+    value_label: str
+    total_return_pct: float
+    sharpe_ratio: Optional[float] = None
+    max_drawdown_pct: Optional[float] = None
+    is_mine: bool
+    viewable: bool
+
+
+class LeaderboardCategoryOut(BaseModel):
+    key: str
+    title: str
+    rows: list[LeaderboardRowOut]
+
+
+class LeaderboardBestRankOut(BaseModel):
+    best_rank: int
+    category_label: str
+    strategy_label: str
+
+
+class LeaderboardBundleOut(BaseModel):
+    start: date
+    end: date
+    total_public_entries: int
+    show_empty_state: bool
+    best_rank: Optional[LeaderboardBestRankOut] = None
+    categories: list[LeaderboardCategoryOut]
+
+
+class LeaderboardEntryPatchIn(BaseModel):
+    share_public: bool
+
+
+class LeaderboardEntryMineOut(BaseModel):
+    id: int
+    anon_id: int
+    strategy_seq: int
+    source: str
+    period_start: date
+    period_end: date
+    share_public: bool
+    total_return_pct: float
+    trade_count: int
+    created_at: datetime
+
+
+class LeaderboardDetailOut(BaseModel):
+    id: int
+    anon_id: int
+    strategy_seq: int
+    strategy_label: str
+    ticker: Optional[str] = None
+    source: str
+    period_start: date
+    period_end: date
+    total_return_pct: float
+    sharpe_ratio: Optional[float] = None
+    max_drawdown_pct: Optional[float] = None
+    win_rate_pct: Optional[float] = None
+    trade_count: int
+    strategy_code: Optional[str] = None
+    strategy_visual_json: Optional[str] = None

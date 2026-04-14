@@ -91,18 +91,22 @@ export const api = {
   performanceReport: (start, end) =>
     request(`/api/performance/report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
 
-  performanceSummaryReport: (start, end) =>
-    request(
-      `/api/performance/summary-report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-      { method: "POST" }
-    ),
+  performanceSummaryReport: (start, end, extras = {}) => {
+    const body = { start, end };
+    if (extras.strategyTitle?.trim()) body.strategy_title = extras.strategyTitle.trim();
+    if (extras.strategyNotes?.trim()) body.strategy_notes = extras.strategyNotes.trim();
+    return request("/api/performance/summary-report", { method: "POST", body });
+  },
 
-  async performanceSummaryReportPdfBlob(start, end) {
-    const headers = {};
+  async performanceSummaryReportPdfBlob(start, end, extras = {}) {
+    const headers = { "Content-Type": "application/json" };
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-    const url = `${base}/api/performance/summary-report.pdf?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
-    const res = await fetch(url, { headers });
+    const body = { start, end };
+    if (extras.strategyTitle?.trim()) body.strategy_title = extras.strategyTitle.trim();
+    if (extras.strategyNotes?.trim()) body.strategy_notes = extras.strategyNotes.trim();
+    const url = `${base}/api/performance/summary-report.pdf`;
+    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) {
       const text = await res.text();
       let msg = text;
@@ -118,4 +122,24 @@ export const api = {
   },
 
   runCodeBacktest: (body) => request("/api/backtest/run-code", { method: "POST", body }),
+
+  leaderboard: (start, end) =>
+    request(
+      `/api/leaderboard?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+    ),
+  leaderboardMine: () => request("/api/leaderboard/mine"),
+  leaderboardEntry: (id) => request(`/api/leaderboard/entries/${encodeURIComponent(id)}`),
+  patchLeaderboardEntry: (id, body) =>
+    request(`/api/leaderboard/entries/${encodeURIComponent(id)}`, { method: "PATCH", body }),
 };
+
+/** After a market order, paper snapshot is refreshed in a background task; poll until the row exists. */
+export async function fetchPaperLeaderboardEntryIdWithRetry(maxAttempts = 12) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const rows = await api.leaderboardMine();
+    const paper = rows.find((r) => r.source === "paper");
+    if (paper?.id != null) return paper.id;
+    await new Promise((r) => setTimeout(r, 250 + i * 150));
+  }
+  return null;
+}

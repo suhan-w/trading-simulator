@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
+import { api, fetchPaperLeaderboardEntryIdWithRetry } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatAud } from "../formatAud";
 import CardHeaderTitle from "./CardHeaderTitle";
@@ -32,9 +32,9 @@ function QuoteSpinner() {
 }
 
 /**
- * @param {{ onQuoteSymbol?: (symbol: string | null) => void }} props
+ * @param {{ onQuoteSymbol?: (symbol: string | null) => void; onMarketOrderFilled?: (order: unknown) => void }} props
  */
-export default function ExecuteTradeForm({ onQuoteSymbol }) {
+export default function ExecuteTradeForm({ onQuoteSymbol, onMarketOrderFilled }) {
   const onQuoteRef = useRef(onQuoteSymbol);
   onQuoteRef.current = onQuoteSymbol;
 
@@ -152,12 +152,17 @@ export default function ExecuteTradeForm({ onQuoteSymbol }) {
     }
     setSubmitting(true);
     try {
-      await api.placeOrder({
+      const ord = await api.placeOrder({
         ticker: norm,
         side: tradeSide,
         order_type: "market",
         quantity: qty,
       });
+      let paperId = ord?.paper_leaderboard_entry_id ?? null;
+      if (paperId == null) {
+        paperId = await fetchPaperLeaderboardEntryIdWithRetry();
+      }
+      onMarketOrderFilled?.({ ...ord, paper_leaderboard_entry_id: paperId });
       setSuccess(`${tradeSide.toUpperCase()} ${qty} ${norm} filled at last close (EOD).`);
       setQuantity("");
       setQuote(null);

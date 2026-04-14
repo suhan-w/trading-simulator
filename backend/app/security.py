@@ -18,7 +18,13 @@ def hash_password(plain: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(_bcrypt_plain(plain), hashed)
+    if not hashed or not isinstance(hashed, str):
+        return False
+    try:
+        return pwd_context.verify(_bcrypt_plain(plain), hashed)
+    except (ValueError, TypeError):
+        # Malformed hash, bcrypt/passlib version mismatch, etc.
+        return False
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

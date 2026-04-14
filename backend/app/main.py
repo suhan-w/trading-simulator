@@ -5,7 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, engine, ensure_schema_upgrades
-from app.routers import auth, backtest, market, orders, performance, portfolio
+
+import app.models  # noqa: F401 — register all ORM tables on Base before create_all
+
+from app.routers import auth, backtest, leaderboard, market, orders, performance, portfolio
 
 
 @asynccontextmanager
@@ -30,8 +33,10 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:80",
         "http://localhost",
+        "http://localhost:8080",
         "http://127.0.0.1",
         "http://127.0.0.1:80",
+        "http://127.0.0.1:8080",
     ],
     allow_origin_regex=_local_origin_regex,
     allow_credentials=True,
@@ -41,6 +46,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(backtest.router)
+app.include_router(leaderboard.router)
 app.include_router(market.router)
 app.include_router(orders.router)
 app.include_router(performance.router)

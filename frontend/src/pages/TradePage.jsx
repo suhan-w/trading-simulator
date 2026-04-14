@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import ExecuteTradeForm from "../components/ExecuteTradeForm";
+import ShareLeaderboardBanner from "../components/ShareLeaderboardBanner";
 import HistoricalStockPanel from "../components/HistoricalStockPanel";
 import CardHeaderTitle from "../components/CardHeaderTitle";
 import SectionHeading from "../components/SectionHeading";
@@ -94,7 +95,11 @@ export default function TradePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [chartSymbol, setChartSymbol] = useState(null);
   const [portfolioData, setPortfolioData] = useState(null);
+  const [portfolioErr, setPortfolioErr] = useState(null);
   const [strategyReminder, setStrategyReminder] = useState("");
+  const [paperLbEntryId, setPaperLbEntryId] = useState(null);
+  const [paperSharePublic, setPaperSharePublic] = useState(false);
+  const [paperShareBusy, setPaperShareBusy] = useState(false);
 
   useEffect(() => {
     try {
@@ -112,12 +117,34 @@ export default function TradePage() {
   useEffect(() => {
     if (!user) {
       setPortfolioData(null);
+      setPortfolioErr(null);
       return undefined;
     }
     loadPortfolio();
     const id = setInterval(loadPortfolio, 45_000);
     return () => clearInterval(id);
   }, [user, loadPortfolio]);
+
+  const onPaperShareToggle = useCallback(async (next) => {
+    if (paperLbEntryId == null) return;
+    setPaperShareBusy(true);
+    try {
+      await api.patchLeaderboardEntry(paperLbEntryId, { share_public: next });
+      setPaperSharePublic(next);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPaperShareBusy(false);
+    }
+  }, [paperLbEntryId]);
+
+  const onMarketFilled = useCallback((ord) => {
+    const id = ord?.paper_leaderboard_entry_id;
+    if (id != null) {
+      setPaperLbEntryId(id);
+      setPaperSharePublic(false);
+    }
+  }, []);
 
   const dismissStrategyReminder = useCallback(() => {
     try {
@@ -147,8 +174,8 @@ export default function TradePage() {
             <CardHeaderTitle
               headingLevel={2}
               title="Strategy signal rules (reminder)"
-              tooltipText="Python strategy from Backtesting. This app does not auto-trade from this code—use it only as a manual reference for paper orders."
-              subtitle="From your backtest — discretionary guide to entries, exits, and indicators."
+              tooltipText="Python strategy from the Strategy page. This app does not auto-trade from this code—use it only as a manual reference for paper orders."
+              subtitle="From your strategy builder — discretionary guide to entries, exits, and indicators."
               right={
                 <button
                   type="button"
@@ -187,7 +214,9 @@ export default function TradePage() {
                   tooltipText="Snapshot of open positions: ticker, quantity, last close, and unrealised P/L. Full table and row charts are on Portfolio."
                 />
               </div>
-              {portfolioData == null ? (
+              {portfolioErr ? (
+                <p className="px-5 pb-5 text-sm font-mono font-semibold text-danger">{portfolioErr}</p>
+              ) : portfolioData == null ? (
                 <p className="px-5 pb-5 text-sm font-mono text-muted">Loading…</p>
               ) : (
                 <TradeHoldingsTable holdings={portfolioData.holdings} />
@@ -195,8 +224,14 @@ export default function TradePage() {
             </section>
           )}
         </div>
-        <div className="min-w-0 flex w-full">
-          <ExecuteTradeForm onQuoteSymbol={setChartSymbol} />
+        <div className="min-w-0 flex w-full flex-col gap-3">
+          <ExecuteTradeForm onQuoteSymbol={setChartSymbol} onMarketOrderFilled={onMarketFilled} />
+          <ShareLeaderboardBanner
+            entryId={paperLbEntryId}
+            sharePublic={paperSharePublic}
+            onChangeShare={(v) => void onPaperShareToggle(v)}
+            disabled={paperShareBusy}
+          />
         </div>
       </div>
     </div>

@@ -153,7 +153,7 @@ export function BacktestDailyReturnsChart({
         <div className="cs-card-header pb-2">
           <CardHeaderTitle
             headingLevel={3}
-            title="Daily returns"
+            title="Daily Returns"
             tooltipText="Per-session strategy return (%). Green positive, red negative."
           />
         </div>
@@ -271,7 +271,7 @@ export function BacktestSignalsChart({
         <div className="cs-card-header pb-2">
           <CardHeaderTitle
             headingLevel={3}
-            title="Price & signals"
+            title="Price and Signals"
             tooltipText="Instrument close with reported buy/sell markers from your strategy."
           />
         </div>

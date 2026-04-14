@@ -15,6 +15,13 @@ def _create_engine():
     kwargs: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        # Default pool (5 + 10) exhausts quickly when any request holds a session
+        # for tens of seconds (e.g. sandboxed backtests) under concurrent load.
+        kwargs["pool_size"] = 20
+        kwargs["max_overflow"] = 30
+        kwargs["pool_timeout"] = 60
+        kwargs["pool_recycle"] = 300
     return create_engine(url, **kwargs)
 
 
@@ -53,9 +60,40 @@ def ensure_schema_upgrades() -> None:
         ustmts: list[str] = []
         if "alpha_vantage_api_key" not in ucols:
             ustmts.append("ALTER TABLE users ADD COLUMN alpha_vantage_api_key VARCHAR(512)")
+        if "anon_user_id" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN anon_user_id VARCHAR(24)")
+        if "anon_strategy_seq" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN anon_strategy_seq INTEGER DEFAULT 0")
         if ustmts:
             with engine.begin() as conn:
                 for sql in ustmts:
+                    conn.execute(text(sql))
+            if "anon_user_id" not in ucols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(
+                            text(
+                                "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_anon_user_id "
+                                "ON users (anon_user_id)"
+                            )
+                        )
+                    else:
+                        conn.execute(
+                            text(
+                                "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_anon_user_id "
+                                "ON users (anon_user_id)"
+                            )
+                        )
+
+    insp_lb = inspect(engine)
+    if "leaderboard_entries" in insp_lb.get_table_names():
+        lcols = {c["name"] for c in insp_lb.get_columns("leaderboard_entries")}
+        lstmts: list[str] = []
+        if "strategy_seq" not in lcols:
+            lstmts.append("ALTER TABLE leaderboard_entries ADD COLUMN strategy_seq INTEGER DEFAULT 0")
+        if lstmts:
+            with engine.begin() as conn:
+                for sql in lstmts:
                     conn.execute(text(sql))
 
 

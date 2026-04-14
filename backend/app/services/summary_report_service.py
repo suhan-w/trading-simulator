@@ -182,12 +182,38 @@ def _conclusion(
     return " ".join(bits)
 
 
-def build_executive_summary_bundle(db: Session, user: User, start: date, end: date) -> dict[str, Any]:
+def _normalized_strategy_context(
+    strategy_title: str | None, strategy_notes: str | None
+) -> dict[str, str] | None:
+    t = (strategy_title or "").strip() or None
+    n = (strategy_notes or "").strip() or None
+    if not t and not n:
+        return None
+    out: dict[str, str] = {}
+    if t:
+        out["strategy_title"] = t
+    if n:
+        out["strategy_notes"] = n
+    return out
+
+
+def build_executive_summary_bundle(
+    db: Session,
+    user: User,
+    start: date,
+    end: date,
+    *,
+    strategy_title: str | None = None,
+    strategy_notes: str | None = None,
+) -> tuple[dict[str, Any], int]:
     if start > end:
         start, end = end, start
 
-    raw = build_performance_report(db, user, start, end)
-    portfolio = build_portfolio(db, user)
+    strat_ctx = _normalized_strategy_context(strategy_title, strategy_notes)
+
+    raw, n_filled_report = build_performance_report(db, user, start, end)
+    portfolio, n_filled_portfolio = build_portfolio(db, user)
+    n_filled_limits = n_filled_report + n_filled_portfolio
 
     start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
     end_dt = datetime.combine(end, datetime.max.time(), tzinfo=timezone.utc)
@@ -266,6 +292,16 @@ def build_executive_summary_bundle(db: Session, user: User, start: date, end: da
         if head_ret is not None
         else f"Over the period {range_label}, return statistics were limited."
     )
+    if strat_ctx:
+        sc_bits: list[str] = []
+        st = strat_ctx.get("strategy_title")
+        sn = strat_ctx.get("strategy_notes")
+        if st:
+            sc_bits.append(f'User-documented approach: "{st}".')
+        if sn:
+            excerpt = sn[:400] + ("…" if len(sn) > 400 else "")
+            sc_bits.append(f"Context: {excerpt}")
+        exec_summary = " ".join(sc_bits) + " " + exec_summary
     if bench_final is not None and strat_final is not None and alpha_pp is not None:
         exec_summary += (
             f", versus {_fmt_pct(bench_final)} total return on the {bench_label} over the same overlapping dates. "
@@ -380,6 +416,7 @@ def build_executive_summary_bundle(db: Session, user: User, start: date, end: da
             "excess_return_pct": alpha_pp,
             "benchmark_label": bench_label,
         },
+        "strategy_context": strat_ctx,
         "conclusion": _conclusion(
             total_return,
             alpha_pp,
@@ -390,7 +427,7 @@ def build_executive_summary_bundle(db: Session, user: User, start: date, end: da
         "holdings": holdings_out,
         "equity_curve": raw.get("equity_curve") or [],
         "portfolio_vs_benchmark": pvb,
-    }
+    }, n_filled_limits
 
 
 def render_summary_pdf(payload: dict[str, Any]) -> bytes:
@@ -453,6 +490,16 @@ def render_summary_pdf(payload: dict[str, Any]) -> bytes:
         pdf.set_text_color(*ink)
         pdf.set_x(18)
         pdf.multi_cell(174, 5, text)
+
+    sc = payload.get("strategy_context")
+    if sc:
+        section_title("Strategy context (user-provided)")
+        sc_lines: list[str] = []
+        if sc.get("strategy_title"):
+            sc_lines.append(f"Approach: {sc['strategy_title']}")
+        if sc.get("strategy_notes"):
+            sc_lines.append(sc["strategy_notes"])
+        body_text("\n\n".join(sc_lines))
 
     section_title("Executive summary")
     body_text(payload["executive_summary"])
@@ -534,6 +581,21 @@ def render_summary_pdf(payload: dict[str, Any]) -> bytes:
     return bytes(out) if isinstance(out, (bytearray, bytes)) else str(out).encode("latin-1", errors="replace")
 
 
-def summary_pdf_bytes(db: Session, user: User, start: date, end: date) -> bytes:
-    payload = build_executive_summary_bundle(db, user, start, end)
-    return render_summary_pdf(payload)
+def summary_pdf_bytes(
+    db: Session,
+    user: User,
+    start: date,
+    end: date,
+    *,
+    strategy_title: str | None = None,
+    strategy_notes: str | None = None,
+) -> tuple[bytes, int]:
+    payload, n_filled_limits = build_executive_summary_bundle(
+        db,
+        user,
+        start,
+        end,
+        strategy_title=strategy_title,
+        strategy_notes=strategy_notes,
+    )
+    return render_summary_pdf(payload), n_filled_limits

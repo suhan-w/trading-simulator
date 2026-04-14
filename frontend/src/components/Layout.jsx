@@ -74,9 +74,11 @@ export default function Layout() {
               <NavLink to="/trade" className={navPill}>
                 Trade
               </NavLink>
-              <NavLink to="/backtest" className={navPill} title="Backtesting (Python strategies)">
-                <span className="sm:hidden">Backtest</span>
-                <span className="hidden sm:inline">Backtesting</span>
+              <NavLink to="/strategy" className={navPill} title="Strategy builder and backtests">
+                Strategy
+              </NavLink>
+              <NavLink to="/backtesting" className={navPill}>
+                Backtesting
               </NavLink>
               <NavLink to="/performance" className={navPill}>
                 Performance
@@ -98,9 +100,11 @@ export default function Layout() {
             <NavLink to="/trade" className={navPill}>
               Trade
             </NavLink>
-            <NavLink to="/backtest" className={navPill} title="Backtesting (Python strategies)">
-              <span className="sm:hidden">Backtest</span>
-              <span className="hidden sm:inline">Backtesting</span>
+            <NavLink to="/strategy" className={navPill} title="Strategy builder and backtests">
+              Strategy
+            </NavLink>
+            <NavLink to="/backtesting" className={navPill}>
+              Backtesting
             </NavLink>
             <NavLink to="/performance" className={navPill}>
               Performance
@@ -147,7 +151,13 @@ export default function Layout() {
             <span className="text-ink/[0.15]" aria-hidden>
               ·
             </span>
-            <Link to="/backtest" className="text-gold hover:underline">
+            <Link to="/strategy" className="hover:text-ink">
+              Strategy
+            </Link>
+            <span className="text-ink/[0.15]" aria-hidden>
+              ·
+            </span>
+            <Link to="/backtesting" className="text-gold hover:underline">
               Backtesting
             </Link>
             <span className="text-ink/[0.15]" aria-hidden>

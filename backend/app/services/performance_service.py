@@ -136,15 +136,13 @@ def build_performance_report(
     user: User,
     start: date,
     end: date,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], int]:
+    """Returns (report dict, limit-order fills from first build_portfolio in this pipeline)."""
     if start > end:
         start, end = end, start
 
-    all_points = equity_history_points(db, user)
+    all_points, filled_from_equity, data = equity_history_points(db, user)
     window_pts = _filter_equity_window(all_points, start, end)
-
-    data = build_portfolio(db, user)
-    db.commit()
 
     txs = (
         db.query(Transaction)
@@ -337,7 +335,8 @@ def build_performance_report(
         dd_pct = round((peak_eq - eq) / peak_eq * 100, 4) if peak_eq > 0 else 0.0
         drawdown_series.append({"date": row["date"], "drawdown_pct": dd_pct})
 
-    return {
+    return (
+        {
         "start": start.isoformat(),
         "end": end.isoformat(),
         "equity_curve": equity_curve,
@@ -369,4 +368,6 @@ def build_performance_report(
         },
         "per_stock_pnl": per_stock_pnl,
         "drawdown_series": drawdown_series,
-    }
+        },
+        filled_from_equity,
+    )

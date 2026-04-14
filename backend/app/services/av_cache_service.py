@@ -107,13 +107,22 @@ def save_cache(db: Session, symbol: str, cache_date: date, bars: dict[str, dict[
 
 
 def get_usage_today(db: Session, user_id: int) -> int:
-    d = _utc_today()
-    row = (
-        db.query(AvDailyUsage)
-        .filter(AvDailyUsage.user_id == user_id, AvDailyUsage.usage_date == d)
-        .first()
-    )
-    return int(row.request_count) if row else 0
+    """Return today's AV request count for user, or 0 if none / unreadable row / DB edge case."""
+    try:
+        d = _utc_today()
+        row = (
+            db.query(AvDailyUsage)
+            .filter(AvDailyUsage.user_id == user_id, AvDailyUsage.usage_date == d)
+            .first()
+        )
+        if not row:
+            return 0
+        rc = row.request_count
+        if rc is None:
+            return 0
+        return int(rc)
+    except Exception:
+        return 0
 
 
 def increment_usage(db: Session, user_id: int) -> int:
@@ -124,7 +133,8 @@ def increment_usage(db: Session, user_id: int) -> int:
         .first()
     )
     if row:
-        row.request_count = int(row.request_count) + 1
+        base = int(row.request_count) if row.request_count is not None else 0
+        row.request_count = base + 1
         return int(row.request_count)
     db.add(AvDailyUsage(user_id=user_id, usage_date=d, request_count=1))
     db.flush()
@@ -239,8 +249,20 @@ def get_or_fetch_ohlcv(
 
 
 def get_eod_quote_dict(db: Session, user: User, ticker: str) -> dict[str, Any]:
-    bars, _from_cache = get_or_fetch_ohlcv(db, user, ticker)
+    """Latest EOD close. Prefer any cached daily series for this symbol (no network, no AV throttle)."""
     sym = _resolve_av_symbol(ticker)
+    cached_bars = get_bars_latest_cached(db, ticker)
+    if cached_bars and len(cached_bars) >= 2:
+        price, as_of = last_close_from_bars(cached_bars)
+        return {
+            "ticker": sym,
+            "price": price,
+            "currency": "AUD",
+            "name": sym,
+            "as_of_date": as_of,
+            "delayed_eod": True,
+        }
+    bars, _from_cache = get_or_fetch_ohlcv(db, user, ticker)
     price, as_of = last_close_from_bars(bars)
     return {
         "ticker": sym,

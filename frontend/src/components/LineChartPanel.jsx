@@ -105,12 +105,12 @@ export function LineChartPanel({
                 topColor: "rgba(200, 150, 62, 0.15)",
                 bottomColor: "rgba(200, 150, 62, 0.04)",
                 lineWidth: 2,
-              }
-            : {
-                lineColor: GOLD,
-                topColor: FILL_TOP,
-                bottomColor: FILL_BOTTOM,
-                lineWidth: 2,
+          }
+        : {
+            lineColor: GOLD,
+            topColor: FILL_TOP,
+            bottomColor: FILL_BOTTOM,
+            lineWidth: 2,
               };
     const series = chart.addAreaSeries(areaOpts);
     series.setData(
@@ -147,13 +147,13 @@ export function LineChartPanel({
             ? fillHeight
               ? "flex min-h-0 w-full flex-1 flex-col"
               : "w-full"
-            : embedded
+          : embedded
               ? fillHeight
                 ? "flex min-h-0 flex-1 flex-col px-3 pb-3 pt-0"
                 : "px-3 pb-3 pt-0"
-              : title
-                ? "px-3 pb-3 pt-0"
-                : "px-3 pb-3 pt-3"
+            : title
+              ? "px-3 pb-3 pt-0"
+              : "px-3 pb-3 pt-3"
       }
     >
       {!points?.length && !showEmptyFrame ? (
@@ -163,7 +163,7 @@ export function LineChartPanel({
               ? `flex items-center justify-center border-b border-ink/[0.08] font-sans leading-none`
               : fillHeight
                 ? "flex min-h-0 flex-1 items-center justify-center py-10 font-mono"
-                : "py-10 font-mono"
+              : "py-10 font-mono"
           }`}
           style={
             minimal

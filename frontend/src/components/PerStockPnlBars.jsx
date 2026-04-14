@@ -4,7 +4,7 @@ import CardHeaderTitle from "./CardHeaderTitle";
 const BAR_POS = "#2d8a55";
 const BAR_NEG = "#c0392b";
 
-/** @param {{ ticker: string, pnl: number }[]} rows */
+/** @param {{ ticker: string, pnl: number, return_pct?: number | null }[]} rows */
 export default function PerStockPnlBars({
   title = "",
   tooltipText = "",
@@ -34,6 +34,10 @@ export default function PerStockPnlBars({
         {rows.map((r) => {
           const positive = r.pnl >= 0;
           const widthPct = (Math.abs(r.pnl) / extent) * 100;
+          const rp =
+            r.return_pct != null && !Number.isNaN(Number(r.return_pct))
+              ? `${Number(r.return_pct) >= 0 ? "+" : ""}${Number(r.return_pct).toFixed(2)}%`
+              : null;
           return (
             <div key={r.ticker} className="perf-pl-row">
               <span className="perf-pl-ticker">{r.ticker}</span>
@@ -46,10 +50,17 @@ export default function PerStockPnlBars({
                   }}
                 />
               </div>
-              <span className={`perf-pl-val ${positive ? "pos" : "neg"}`}>
-                {r.pnl > 0 ? "+" : ""}
-                {formatAud(r.pnl)}
-              </span>
+              <div className="perf-pl-val-block">
+                <span className={`perf-pl-val ${positive ? "pos" : "neg"}`}>
+                  {r.pnl > 0 ? "+" : ""}
+                  {formatAud(r.pnl)}
+                </span>
+                {rp ? (
+                  <span className="perf-pl-pct" style={{ color: positive ? BAR_POS : BAR_NEG }}>
+                    {rp}
+                  </span>
+                ) : null}
+              </div>
             </div>
           );
         })}
@@ -59,6 +70,10 @@ export default function PerStockPnlBars({
         {rows.map((r) => {
           const w = (Math.abs(r.pnl) / extent) * 50;
           const positive = r.pnl >= 0;
+          const rp =
+            r.return_pct != null && !Number.isNaN(Number(r.return_pct))
+              ? `${Number(r.return_pct) >= 0 ? "+" : ""}${Number(r.return_pct).toFixed(2)}%`
+              : null;
           return (
             <div
               key={r.ticker}
@@ -79,13 +94,20 @@ export default function PerStockPnlBars({
                   />
                 )}
               </div>
-              <span
-                className="text-right font-mono text-xs font-semibold tabular-nums"
-                style={{ color: positive ? BAR_POS : BAR_NEG }}
-              >
-                {r.pnl > 0 ? "+" : ""}
-                {formatAud(r.pnl)}
-              </span>
+              <div className="flex flex-col items-end gap-0.5 text-right">
+                <span
+                  className="font-mono text-xs font-semibold tabular-nums"
+                  style={{ color: positive ? BAR_POS : BAR_NEG }}
+                >
+                  {r.pnl > 0 ? "+" : ""}
+                  {formatAud(r.pnl)}
+                </span>
+                {rp ? (
+                  <span className="font-mono text-[10px] tabular-nums" style={{ color: positive ? BAR_POS : BAR_NEG }}>
+                    {rp}
+                  </span>
+                ) : null}
+              </div>
             </div>
           );
         })}

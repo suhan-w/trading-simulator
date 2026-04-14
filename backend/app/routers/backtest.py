@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.deps import get_current_user, require_alpha_vantage_api_key
+from app.database import SessionLocal, get_db
+from app.deps import get_bearer_user_id, get_current_user, require_alpha_vantage_api_key
 from app.models import User
 from app.schemas import BacktestIn, BacktestOut, CodeBacktestCodeIn, CodeBacktestCodeOut
 from app.services import av_cache_service
 from app.services.backtest_service import run_strategy
 from app.services.code_backtest_sandbox import run_code_backtest_sandboxed
+from app.services import leaderboard_service
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
@@ -38,8 +39,9 @@ def run_backtest(
 @router.post("/run-code", response_model=CodeBacktestCodeOut)
 def run_code_backtest(
     body: CodeBacktestCodeIn,
-    _user: User = Depends(get_current_user),
+    user_id: int = Depends(get_bearer_user_id),
 ):
+    """Sandbox can run ~1 minute; do not hold a request-scoped DB session during it."""
     try:
         raw = run_code_backtest_sandboxed(body.code, body.ticker.strip().upper(), body.start, body.end)
     except ValueError as e:
@@ -48,8 +50,28 @@ def run_code_backtest(
         raise HTTPException(status_code=504, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+    db = SessionLocal()
+    try:
+        entry = leaderboard_service.create_backtest_entry(
+            db,
+            user_id,
+            body.ticker.strip().upper(),
+            body.start,
+            body.end,
+            raw["metrics"],
+            body.code,
+            body.visual_json,
+        )
+        db.commit()
+        entry_id = entry.id
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
     return CodeBacktestCodeOut(
         benchmark="^AXJO",
         metrics=raw["metrics"],
         series=raw["series"],
+        leaderboard_entry_id=entry_id,
     )
