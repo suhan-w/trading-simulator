@@ -66,6 +66,15 @@ export default function BacktestingPage() {
       const raw = sessionStorage.getItem(STRATEGY_LOAD_PAYLOAD_KEY);
       if (!raw) return;
       const p = JSON.parse(raw);
+      if (typeof p?.ticker === "string" && p.ticker.trim()) {
+        setTicker(p.ticker.trim().toUpperCase());
+      }
+      if (typeof p?.start === "string" && p.start) {
+        setStart(p.start);
+      }
+      if (typeof p?.end === "string" && p.end) {
+        setEnd(p.end);
+      }
       if (typeof p?.code === "string" && p.code.trim()) {
         setCode(p.code);
       }

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Transaction, User
-from app.services import market_service
+from app.services import av_cache_service, market_service
 from app.services.portfolio_service import build_portfolio, equity_history_points
 
 
@@ -245,10 +245,18 @@ def build_performance_report(
 
     bench_rows: list[dict[str, Any]] = []
     bs = get_series_for_ticker(market_service.BENCHMARK_SYMBOL_AV)
+    if bs is None:
+        # Performance charts/alpha depend on benchmark overlap. If benchmark isn't in cache yet,
+        # fetch once (respecting AV limits and existing cache policy), then continue gracefully.
+        try:
+            bars, _ = av_cache_service.get_or_fetch_ohlcv(
+                db, user, market_service.BENCHMARK_SYMBOL_AV
+            )
+            bs = av_cache_service.bars_to_close_map(bars)
+        except Exception:
+            bs = None
     if bs is not None:
         bench_rows = market_service.closes_daily_from_series(bs, start, end_fetch)
-    else:
-        bench_rows = []
     # Chart: aligned calendar dates, day-over-day % change for portfolio equity vs benchmark close.
     portfolio_norm: list[dict[str, Any]] = []
     benchmark_norm: list[dict[str, Any]] = []

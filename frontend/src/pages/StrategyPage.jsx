@@ -45,9 +45,9 @@ function AvailableLibrariesBlock() {
 export default function StrategyPage() {
   const navigate = useNavigate();
   const [code, setCode] = useState(EXAMPLE_MA_CROSSOVER);
-  const [ticker] = useState("CBA.AX");
-  const [start] = useState(new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().slice(0, 10));
-  const [end] = useState(new Date().toISOString().slice(0, 10));
+  const [ticker, setTicker] = useState("CBA.AX");
+  const [start, setStart] = useState(new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().slice(0, 10));
+  const [end, setEnd] = useState(new Date().toISOString().slice(0, 10));
   const [basketOpen, setBasketOpen] = useState(false);
   const [basketItems, setBasketItems] = useState([]);
   const [editorExpanded, setEditorExpanded] = useState(false);
@@ -68,6 +68,9 @@ export default function StrategyPage() {
       if (!raw) return;
       sessionStorage.removeItem(STRATEGY_LOAD_PAYLOAD_KEY);
       const p = JSON.parse(raw);
+      if (typeof p?.ticker === "string" && p.ticker.trim()) setTicker(p.ticker.trim().toUpperCase());
+      if (typeof p?.start === "string" && p.start) setStart(p.start);
+      if (typeof p?.end === "string" && p.end) setEnd(p.end);
       if (p?.visualBlocks && Array.isArray(p.visualBlocks) && p.visualBlocks.length > 0) {
         setVisualImport({ version: Date.now(), blocks: p.visualBlocks });
       } else if (typeof p?.code === "string" && p.code.trim()) {
@@ -107,12 +110,15 @@ export default function StrategyPage() {
 
   const openBacktesting = useCallback(() => {
     try {
-      sessionStorage.setItem(STRATEGY_LOAD_PAYLOAD_KEY, JSON.stringify({ code, visualBlocks: null }));
+      sessionStorage.setItem(
+        STRATEGY_LOAD_PAYLOAD_KEY,
+        JSON.stringify({ code, visualBlocks: null, ticker, start, end })
+      );
     } catch {
       // ignore
     }
     navigate("/backtesting");
-  }, [code, navigate]);
+  }, [code, ticker, start, end, navigate]);
 
   const saveCurrentToBasket = useCallback(() => {
     const defaultName = `Strategy ${basketItems.length + 1}`;
@@ -180,6 +186,9 @@ export default function StrategyPage() {
               ticker={ticker}
               start={start}
               end={end}
+              onTickerChange={setTicker}
+              onStartChange={setStart}
+              onEndChange={setEnd}
               extensions={extensions}
               importsBlock={<AvailableLibrariesBlock />}
               onRun={() => {}}

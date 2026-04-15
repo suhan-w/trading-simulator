@@ -12,8 +12,8 @@ import {
 /** @typedef {'visual' | 'generated' | 'raw'} BuilderMode */
 /** @typedef {{ id: string, type: string, params?: Record<string, unknown>, x: number, y: number }} CanvasBlock */
 
-const CANVAS_BLOCK_MIN_W = 200;
-const CANVAS_BLOCK_MIN_H = 64;
+const CANVAS_BLOCK_MIN_W = 160;
+const CANVAS_BLOCK_MIN_H = 56;
 
 function sortBlocksForCompile(blocks) {
   return [...blocks].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
@@ -222,22 +222,40 @@ function borderForType(type) {
   return COL[c];
 }
 
-/** @param {{ block: CanvasBlock; ticker: string; start: string; end: string; onChange: (p: Record<string, unknown>) => void }} props */
-function BlockFields({ block, ticker, start, end, onChange }) {
+/** @param {{
+ * block: CanvasBlock;
+ * ticker: string;
+ * start: string;
+ * end: string;
+ * onChange: (p: Record<string, unknown>) => void;
+ * onTickerChange?: (next: string) => void;
+ * onStartChange?: (next: string) => void;
+ * onEndChange?: (next: string) => void;
+ * }} props */
+function BlockFields({ block, ticker, start, end, onChange, onTickerChange, onStartChange, onEndChange }) {
   const p = block.params || {};
   const set = (k, v) => onChange({ ...p, [k]: v });
 
   switch (block.type) {
     case "select_stock":
       return (
-        <span className="text-[12px] text-[#aaa]">
-          Uses ticker <span className="font-mono text-ink">{ticker || "—"}</span>
-        </span>
+        <label className="flex items-center gap-1 text-[12px] text-ink">
+          <span className="text-[#aaa]">Ticker</span>
+          <input
+            type="text"
+            value={ticker || ""}
+            onChange={(e) => onTickerChange?.(e.target.value.toUpperCase())}
+            placeholder="CBA.AX"
+          />
+        </label>
       );
     case "select_date_range":
       return (
-        <span className="text-[12px] text-[#aaa]">
-          Range <span className="font-mono text-ink">{start}</span> → <span className="font-mono text-ink">{end}</span>
+        <span className="flex flex-wrap items-center gap-1 text-[12px] text-ink">
+          <span className="text-[#aaa]">From</span>
+          <input type="date" value={start || ""} onChange={(e) => onStartChange?.(e.target.value)} />
+          <span className="text-[#aaa]">to</span>
+          <input type="date" value={end || ""} onChange={(e) => onEndChange?.(e.target.value)} />
         </span>
       );
     case "sma":
@@ -381,6 +399,9 @@ const PALETTE_LABELS = Object.fromEntries(
  *   importsBlock: import("react").ReactNode;
  *   onRun: (overrideCode?: string, meta?: { source: "visual" | "generated" | "raw"; visualJson?: string }) => void | Promise<void>;
  *   loading: boolean;
+ *   onTickerChange?: (next: string) => void;
+ *   onStartChange?: (next: string) => void;
+ *   onEndChange?: (next: string) => void;
  *   onExpandEditor?: () => void;
  *   visualSaveEligible?: boolean;
  *   onRunAvailabilityChange?: (state: { disabled: boolean }) => void;
@@ -399,6 +420,9 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
     importsBlock,
     onRun,
     loading,
+    onTickerChange,
+    onStartChange,
+    onEndChange,
     onExpandEditor,
     visualSaveEligible = false,
     onRunAvailabilityChange,
@@ -444,7 +468,7 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
   /** In-flow min height so absolute blocks below the fold extend scrollable area (templates stack vertically). */
   const canvasInnerMinHeight = useMemo(() => {
     if (canvasBlocks.length === 0) return 280;
-    const estBlockPx = 120;
+    const estBlockPx = 96;
     const pad = 64;
     const lowest = Math.max(...canvasBlocks.map((b) => (Number(b.y) || 0) + estBlockPx));
     return Math.max(280, lowest + pad);
@@ -947,6 +971,9 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
                           ticker={ticker}
                           start={start}
                           end={end}
+                          onTickerChange={onTickerChange}
+                          onStartChange={onStartChange}
+                          onEndChange={onEndChange}
                           onChange={(params) => updateBlockParams(b.id, params)}
                         />
                       </div>
