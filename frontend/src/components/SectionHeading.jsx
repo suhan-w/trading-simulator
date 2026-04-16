@@ -7,6 +7,7 @@ import { useId, useState } from "react";
 export default function SectionHeading({ title, subtitle, tooltipText, className = "", right = null }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const tipId = useId();
 
   return (
     <div className={`page-section-heading ${className}`.trim()}>
@@ -19,7 +20,9 @@ export default function SectionHeading({ title, subtitle, tooltipText, className
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-controls={panelId}
+            aria-describedby={tipId}
             aria-label="About this page"
+            data-tooltip={tooltipText}
           />
         ) : null}
         {right ? <div className="ml-auto flex shrink-0 items-center">{right}</div> : null}
@@ -28,6 +31,11 @@ export default function SectionHeading({ title, subtitle, tooltipText, className
         <div id={panelId} className="pixel-tooltip-text" role="region">
           {tooltipText}
         </div>
+      ) : null}
+      {tooltipText ? (
+        <span id={tipId} className="sr-only" role="tooltip">
+          {tooltipText}
+        </span>
       ) : null}
       {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}
     </div>

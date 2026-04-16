@@ -128,7 +128,9 @@ function parseLinearProgram(program, errors) {
     }
     if (t === "volume") {
       const v = nextName("vol");
+      const period = Math.max(1, Math.round(num(b, "period", 1)));
       setup.push(`    ${v} = df["Volume"].astype(float)`);
+      if (period > 1) setup.push(`    ${v} = ${v}.rolling(${period}).mean()`);
       stack.push(v);
       return;
     }
@@ -168,8 +170,12 @@ function parseLinearProgram(program, errors) {
     const b = program[i];
     const t = b.type;
 
+    // DATA blocks are allowed, but must be at the very top (before any indicators/conditions/actions).
+    // They act as optional configuration hints; the Strategy page can still override via form inputs.
+    // If users place them later, treat it as an ordering error.
     if (DATA_TYPES.has(t)) {
-      errors.push(`"${t}" must appear at the top of the canvas (before strategy blocks).`);
+      const seenNonData = program.slice(0, i).some((x) => !DATA_TYPES.has(x.type));
+      if (seenNonData) errors.push(`"${t}" must appear at the top of the canvas (before strategy blocks).`);
       continue;
     }
 

@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import CodeMirror from "@uiw/react-codemirror";
-import { python } from "@codemirror/lang-python";
 import { EditorView } from "@codemirror/view";
+import { python } from "@codemirror/lang-python";
+import CodeMirror from "@uiw/react-codemirror";
 import SectionHeading from "../components/SectionHeading";
-import CardHeaderTitle from "../components/CardHeaderTitle";
-import { EXAMPLES, EXAMPLE_MA_CROSSOVER } from "../data/exampleStrategies";
+import { EXAMPLE_MA_CROSSOVER } from "../data/exampleStrategies";
 import StrategyBuilder from "../components/StrategyBuilder";
-import { loadStrategyBasket, saveStrategyBasket } from "../constants/strategyBasketStorage";
+import NodeGraphCanvas from "../components/NodeGraphCanvas";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
+import { loadVisualStrategies, saveVisualStrategies, VISUAL_SAVED_STRATEGIES_MAX } from "../constants/visualStrategyStorage";
 
-const STRATEGY_BASKET_MAX = 50;
+const DEFAULT_TICKER = "CBA.AX";
+const DEFAULT_START = new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().slice(0, 10);
+const DEFAULT_END = new Date().toISOString().slice(0, 10);
 
 const cowrieEditorTheme = EditorView.theme(
   {
@@ -27,39 +29,22 @@ const cowrieEditorTheme = EditorView.theme(
   { dark: false }
 );
 
-function AvailableLibrariesBlock() {
-  return (
-    <div className="backtest-imports-card" aria-label="Available imports (read only)">
-      <p className="m-0 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: "#c8963e" }}>
-        Read only · Available imports
-      </p>
-      <div className="mt-2.5 max-h-40 space-y-0.5 overflow-auto font-mono text-[12px] leading-relaxed text-white">
-        <p className="m-0">import numpy as np</p>
-        <p className="m-0">import pandas as pd</p>
-        <p className="m-0">import yfinance as yf</p>
-      </div>
-    </div>
-  );
-}
-
 export default function StrategyPage() {
   const navigate = useNavigate();
   const [code, setCode] = useState(EXAMPLE_MA_CROSSOVER);
-  const [ticker, setTicker] = useState("CBA.AX");
-  const [start, setStart] = useState(new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().slice(0, 10));
-  const [end, setEnd] = useState(new Date().toISOString().slice(0, 10));
-  const [basketOpen, setBasketOpen] = useState(false);
-  const [basketItems, setBasketItems] = useState([]);
-  const [editorExpanded, setEditorExpanded] = useState(false);
-  const [codeExpandEditorPx, setCodeExpandEditorPx] = useState(560);
   const [codeImportVersion, setCodeImportVersion] = useState(0);
-  const [visualSaveEligible, setVisualSaveEligible] = useState(false);
   const strategyBuilderRef = useRef(null);
   const [visualImport, setVisualImport] = useState(null);
+  const [basketOpen, setBasketOpen] = useState(true);
+  const [savedStrategies, setSavedStrategies] = useState(() => loadVisualStrategies());
+  const [activeStrategyName, setActiveStrategyName] = useState("Untitled strategy");
   const extensions = useMemo(() => [python(), cowrieEditorTheme], []);
+  const [editorExpanded, setEditorExpanded] = useState(false);
+  const [canvasExpanded, setCanvasExpanded] = useState(false);
+  const [expandedGraph, setExpandedGraph] = useState(null);
 
   useEffect(() => {
-    setBasketItems(loadStrategyBasket());
+    setSavedStrategies(loadVisualStrategies());
   }, []);
 
   useEffect(() => {
@@ -68,36 +53,92 @@ export default function StrategyPage() {
       if (!raw) return;
       sessionStorage.removeItem(STRATEGY_LOAD_PAYLOAD_KEY);
       const p = JSON.parse(raw);
-      if (typeof p?.ticker === "string" && p.ticker.trim()) setTicker(p.ticker.trim().toUpperCase());
-      if (typeof p?.start === "string" && p.start) setStart(p.start);
-      if (typeof p?.end === "string" && p.end) setEnd(p.end);
       if (p?.visualBlocks && Array.isArray(p.visualBlocks) && p.visualBlocks.length > 0) {
         setVisualImport({ version: Date.now(), blocks: p.visualBlocks });
       } else if (typeof p?.code === "string" && p.code.trim()) {
         setCode(p.code);
         setCodeImportVersion((v) => v + 1);
       }
+      if (typeof p?.strategyName === "string" && p.strategyName.trim()) setActiveStrategyName(p.strategyName.trim());
     } catch {
       /* ignore */
     }
   }, []);
 
-  useEffect(() => {
-    if (!editorExpanded) return undefined;
-    const update = () => {
-      const reserve = 132;
-      const cap = Math.min(window.innerHeight * 0.94 - reserve, window.innerHeight - reserve);
-      setCodeExpandEditorPx(Math.max(360, Math.floor(cap)));
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [editorExpanded]);
+  const openBacktesting = useCallback(() => {
+    try {
+      sessionStorage.setItem(
+        STRATEGY_LOAD_PAYLOAD_KEY,
+        JSON.stringify({ code, visualBlocks: null, source: "strategy", strategyName: activeStrategyName })
+      );
+    } catch {
+      // ignore
+    }
+    navigate("/backtesting");
+  }, [code, activeStrategyName, navigate]);
+
+  const saveCurrentStrategy = useCallback(() => {
+    const builder = strategyBuilderRef.current;
+    if (!builder?.getCanvasBlocks) {
+      window.alert("Strategy builder not ready.");
+      return;
+    }
+    const blocks = builder.getCanvasBlocks();
+    if (!Array.isArray(blocks) || blocks.length === 0) {
+      window.alert("Add blocks to the canvas before saving.");
+      return;
+    }
+    if (savedStrategies.length >= VISUAL_SAVED_STRATEGIES_MAX) {
+      window.alert(`You can save at most ${VISUAL_SAVED_STRATEGIES_MAX} strategies. Remove one first.`);
+      return;
+    }
+    const defaultName = `Strategy ${savedStrategies.length + 1}`;
+    const title = window.prompt("Name this strategy:", defaultName);
+    if (title == null) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const id =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `vs-${Date.now()}`;
+    const next = [...savedStrategies, { id, title: trimmed, blocks, savedAt: new Date().toISOString() }];
+    setSavedStrategies(next);
+    saveVisualStrategies(next);
+    setActiveStrategyName(trimmed);
+  }, [savedStrategies]);
+
+  const removeSavedStrategy = useCallback(
+    (id) => {
+      const victim = savedStrategies.find((x) => x.id === id);
+      if (!victim) return;
+      if (!window.confirm(`Remove saved strategy "${victim.title}"?`)) return;
+      const next = savedStrategies.filter((x) => x.id !== id);
+      setSavedStrategies(next);
+      saveVisualStrategies(next);
+    },
+    [savedStrategies]
+  );
+
+  const loadSavedStrategy = useCallback((item) => {
+    const builder = strategyBuilderRef.current;
+    if (!builder?.importCanvasBlocks) return;
+    builder.importCanvasBlocks(item.blocks);
+    setActiveStrategyName(item.title);
+    setBasketOpen(false);
+  }, []);
+
+  const applyTemplate = useCallback((key, name) => {
+    const builder = strategyBuilderRef.current;
+    if (!builder?.applyTemplate) return;
+    builder.applyTemplate(key);
+    setActiveStrategyName(name);
+  }, []);
 
   useEffect(() => {
-    if (!editorExpanded) return undefined;
+    if (!editorExpanded && !canvasExpanded) return undefined;
     const onKey = (e) => {
-      if (e.key === "Escape") setEditorExpanded(false);
+      if (e.key === "Escape") {
+        setEditorExpanded(false);
+        setCanvasExpanded(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -106,252 +147,238 @@ export default function StrategyPage() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [editorExpanded]);
-
-  const openBacktesting = useCallback(() => {
-    try {
-      sessionStorage.setItem(
-        STRATEGY_LOAD_PAYLOAD_KEY,
-        JSON.stringify({ code, visualBlocks: null, ticker, start, end })
-      );
-    } catch {
-      // ignore
-    }
-    navigate("/backtesting");
-  }, [code, ticker, start, end, navigate]);
-
-  const saveCurrentToBasket = useCallback(() => {
-    const defaultName = `Strategy ${basketItems.length + 1}`;
-    const title = window.prompt("Name this strategy:", defaultName);
-    if (title == null) return;
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    if (basketItems.length >= STRATEGY_BASKET_MAX) {
-      window.alert(
-        `You can save at most ${STRATEGY_BASKET_MAX} strategies. Remove one from the basket first.`
-      );
-      return;
-    }
-    const id =
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `st-${Date.now()}`;
-    const next = [
-      ...basketItems,
-      { id, title: trimmed, code, savedAt: new Date().toISOString() },
-    ];
-    setBasketItems(next);
-    saveStrategyBasket(next);
-  }, [basketItems, code]);
-
-  const removeBasketItem = useCallback((id) => {
-    setBasketItems((prev) => {
-      const next = prev.filter((x) => x.id !== id);
-      saveStrategyBasket(next);
-      return next;
-    });
-  }, []);
-
-  const loadFromBasket = useCallback((item) => {
-    setCode(item.code);
-    setBasketOpen(false);
-    setCodeImportVersion((v) => v + 1);
-    setVisualSaveEligible(false);
-  }, []);
-
-  const openCodeEditorExpand = useCallback(() => {
-    setEditorExpanded(true);
-  }, []);
+  }, [editorExpanded, canvasExpanded]);
 
   return (
-    <>
     <div className="space-y-6 md:space-y-8">
-      <SectionHeading title="Strategy" subtitle="Build and organize your strategy logic here, then run it on Backtesting." />
+      <SectionHeading
+        title="Strategy"
+        subtitle="Build and save strategies. When you’re ready, hand off to Backtesting."
+        tooltipText="This page is for building and saving strategies only. When you’re ready, use “Open in Backtesting” to run it against historical data."
+      />
 
-      <div className="backtest-page-v2">
-        <div className="cs-card backtest-strategy-card">
-          <div className="cs-card-header pb-2">
-            <CardHeaderTitle
-              title="Strategy"
-              tooltipText="Visual builder composes blocks into Python run(data). Generated and Raw tabs expose code; only yfinance, pandas, numpy, matplotlib are allowed in the sandbox."
-              subtitle="Visual blocks, auto-generated Python, or raw run(data)."
-            />
-          </div>
-          <div className="border-t border-ink/[0.06] px-2 pb-2 pt-3">
-            <StrategyBuilder
-              ref={strategyBuilderRef}
-              code={code}
-              setCode={setCode}
-              importVersion={codeImportVersion}
-              ticker={ticker}
-              start={start}
-              end={end}
-              onTickerChange={setTicker}
-              onStartChange={setStart}
-              onEndChange={setEnd}
-              extensions={extensions}
-              importsBlock={<AvailableLibrariesBlock />}
-              onRun={() => {}}
-              loading={false}
-              onExpandEditor={openCodeEditorExpand}
-              visualSaveEligible={visualSaveEligible}
-              onRunAvailabilityChange={() => {}}
-              visualImport={visualImport}
-            />
-          </div>
-        </div>
-        <div className="cs-card border border-[#ede9e3]">
-          <div className="cs-card-header pb-2">
-            <CardHeaderTitle title="Backtesting handoff" subtitle="Run and analyze this strategy on the Backtesting page." />
-          </div>
-          <div className="px-4 pb-4">
-            <button type="button" className="cs-btn-buy w-full" onClick={openBacktesting}>
-              Open in Backtesting
-            </button>
-          </div>
-        </div>
+      <StrategyBuilder
+        ref={strategyBuilderRef}
+        code={code}
+        setCode={setCode}
+        importVersion={codeImportVersion}
+        ticker={DEFAULT_TICKER}
+        start={DEFAULT_START}
+        end={DEFAULT_END}
+        extensions={extensions}
+        importsBlock={null}
+        onRun={() => {}}
+        loading={false}
+        onRunAvailabilityChange={() => {}}
+        visualImport={visualImport}
+        onExpandEditor={() => setEditorExpanded(true)}
+        onExpandCanvas={() => {
+          const b = strategyBuilderRef.current;
+          const gs = b?.getGraphState ? b.getGraphState() : null;
+          setExpandedGraph(gs);
+          setCanvasExpanded(true);
+        }}
+        hideDataConfigFields
+        hideSavedStrategiesToolbar
+        autoSyncCodeFromVisual
+        renderLayout={({ modeTabs, palette, panel }) => (
+          <div className="strategy-page">
+            <div className="strategy-page-left">{palette}</div>
+            <div className="strategy-page-right">
+              {modeTabs}
+              {panel}
 
-        <div className="overflow-hidden rounded-[12px] border border-[#ede9e3] bg-white shadow-card-sm">
-          <button
-            type="button"
-            className="grid w-full grid-cols-[1fr_auto] items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-black/[0.02]"
-            onClick={() => setBasketOpen((v) => !v)}
-            aria-expanded={basketOpen}
-            aria-controls="backtest-strategy-basket-panel"
-            id="backtest-strategy-basket-toggle"
-          >
-            <span className="grid grid-cols-[auto_1fr] items-center gap-2">
-              <span className="h-2 w-2 shrink-0 rounded-[1px] bg-gold shadow-card-sm" aria-hidden />
-              <span className="text-sm font-semibold text-ink">Strategy Basket</span>
-            </span>
-            <span className="font-mono text-sm font-medium text-muted" aria-hidden>
-              {basketOpen ? "−" : "+"}
-            </span>
-          </button>
-          {basketOpen && (
-            <div
-              id="backtest-strategy-basket-panel"
-              role="region"
-              aria-labelledby="backtest-strategy-basket-toggle"
-              className="space-y-4 border-t border-ink/[0.06] bg-[#faf9f7] px-4 py-3"
-            >
-                <div className="space-y-2">
-                  <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    Save strategy
-                  </p>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-gold/40 bg-white px-3 py-2 text-left text-sm font-semibold text-ink shadow-sm transition-colors hover:border-gold/60 hover:bg-[#fffefb]"
-                    onClick={saveCurrentToBasket}
+              <div className="strategy-basket-card">
+                <button
+                  type="button"
+                  className="strategy-basket-toggle"
+                  onClick={() => setBasketOpen((v) => !v)}
+                  aria-expanded={basketOpen}
+                  aria-controls="strategy-basket-panel"
+                  id="strategy-basket-toggle"
+                >
+                  <span className="grid grid-cols-[auto_1fr] items-center gap-2">
+                    <span className="h-2 w-2 shrink-0 rounded-[1px] bg-gold shadow-card-sm" aria-hidden />
+                    <span className="text-sm font-semibold text-ink">Strategy Basket</span>
+                  </span>
+                  <span className="font-mono text-sm font-medium text-muted" aria-hidden>
+                    {basketOpen ? "−" : "+"}
+                  </span>
+                </button>
+                {basketOpen ? (
+                  <div
+                    id="strategy-basket-panel"
+                    role="region"
+                    aria-labelledby="strategy-basket-toggle"
+                    className="strategy-basket-panel"
                   >
-                    Save current code to basket…
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    Built-in templates
-                  </p>
-                  <div className="backtest-example-pills">
-                    {EXAMPLES.map((ex) => (
-                      <button
-                        key={ex.id}
-                        type="button"
-                        className="rounded-full border border-[#ede9e3] bg-white px-4 py-2 text-left text-sm font-medium text-black shadow-sm transition-colors hover:border-gold/45 hover:bg-white"
-                        onClick={() => {
-                          setCode(ex.code);
-                          setBasketOpen(false);
-                          setCodeImportVersion((v) => v + 1);
-                          setVisualSaveEligible(false);
-                        }}
-                      >
-                        {ex.title}
+                    <div className="space-y-2">
+                      <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Save strategy</p>
+                      <button type="button" className="strategy-basket-save" onClick={saveCurrentStrategy}>
+                        Save current strategy…
                       </button>
-                    ))}
-                  </div>
-                </div>
-                {basketItems.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                      Your basket
-                    </p>
-                    <div className="backtest-example-pills">
-                      {basketItems.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex min-w-0 items-stretch overflow-hidden rounded-full border border-[#ede9e3] bg-white shadow-sm transition-colors hover:border-gold/45"
-                        >
-                          <button
-                            type="button"
-                            className="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm font-medium text-black transition-colors hover:bg-white"
-                            onClick={() => loadFromBasket(item)}
-                          >
-                            {item.title}
-                          </button>
-                          <button
-                            type="button"
-                            className="shrink-0 border-l border-[#ede9e3] px-2.5 text-base font-medium leading-none text-muted transition-colors hover:bg-black/[0.03] hover:text-ink"
-                            aria-label={`Remove ${item.title} from basket`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeBasketItem(item.id);
-                            }}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
                     </div>
+
+                    <div className="space-y-2">
+                      <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Built-in templates</p>
+                      <div className="backtest-example-pills">
+                        <button type="button" className="strategy-pill" onClick={() => applyTemplate("ma", "Moving Average Crossover")}>
+                          Moving Average Crossover
+                        </button>
+                        <button type="button" className="strategy-pill" onClick={() => applyTemplate("rsi", "RSI Overbought/Oversold")}>
+                          RSI Overbought/Oversold
+                        </button>
+                        <button type="button" className="strategy-pill" onClick={() => applyTemplate("bh", "Buy and Hold")}>
+                          Buy and Hold
+                        </button>
+                      </div>
+                    </div>
+
+                    {savedStrategies.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Saved strategies</p>
+                        <div className="backtest-example-pills">
+                          {savedStrategies.map((item) => (
+                            <div key={item.id} className="strategy-pill-row">
+                              <button type="button" className="strategy-pill strategy-pill--saved" onClick={() => loadSavedStrategy(item)}>
+                                {item.title}
+                              </button>
+                              <button
+                                type="button"
+                                className="strategy-pill-remove"
+                                aria-label={`Remove ${item.title}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeSavedStrategy(item.id);
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
-            )}
+
+              <div className="strategy-handoff-card">
+                <div>
+                  <p className="m-0 text-[15px] font-medium text-ink">Ready to test?</p>
+                  <p className="m-0 mt-1 text-[12px] text-muted">
+                    Send this strategy to Backtesting to run against historical data.
+                  </p>
+                </div>
+                <button type="button" className="strategy-handoff-btn" onClick={openBacktesting}>
+                  Open in Backtesting →
+                </button>
+              </div>
+            </div>
           </div>
+        )}
+      />
 
-      </div>
-    </div>
-
-    {editorExpanded &&
-      createPortal(
-        <div
-          className="backtest-chart-expand-overlay"
-          role="presentation"
-          onClick={() => setEditorExpanded(false)}
-        >
-          <div
-            className="backtest-chart-expand-dialog backtest-code-expand-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="backtest-code-expand-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="backtest-chart-expand-header">
-              <h3 id="backtest-code-expand-title" className="backtest-chart-expand-title">
-                Strategy code
-              </h3>
-              <button
-                type="button"
-                className="backtest-chart-expand-close"
-                onClick={() => setEditorExpanded(false)}
-                aria-label="Close expanded editor"
+      {editorExpanded
+        ? createPortal(
+            <div className="backtest-chart-expand-overlay" role="presentation" onClick={() => setEditorExpanded(false)}>
+              <div
+                className="backtest-chart-expand-dialog backtest-code-expand-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="strategy-code-expand-title"
+                onClick={(e) => e.stopPropagation()}
               >
-                ×
-              </button>
-            </div>
-            <div className="backtest-code-expand-body">
-              <CodeMirror
-                value={code}
-                height={`${codeExpandEditorPx}px`}
-                theme="none"
-                extensions={extensions}
-                onChange={setCode}
-                basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
-                className="overflow-hidden rounded-lg border border-ink/[0.08] text-left shadow-card-sm"
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
+                <div className="backtest-chart-expand-header">
+                  <h3 id="strategy-code-expand-title" className="backtest-chart-expand-title">
+                    Strategy code
+                  </h3>
+                  <button
+                    type="button"
+                    className="backtest-chart-expand-close"
+                    onClick={() => setEditorExpanded(false)}
+                    aria-label="Close expanded editor"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="backtest-chart-expand-body">
+                  <CodeMirror
+                    value={code}
+                    height="min(82vh, 820px)"
+                    theme="none"
+                    extensions={extensions}
+                    onChange={setCode}
+                    basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
+                    className="overflow-hidden rounded-lg border border-ink/[0.08] text-left shadow-card-sm"
+                  />
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {canvasExpanded
+        ? createPortal(
+            <div className="backtest-chart-expand-overlay" role="presentation" onClick={() => setCanvasExpanded(false)}>
+              <div
+                className="backtest-chart-expand-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="strategy-canvas-expand-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="backtest-chart-expand-header">
+                  <h3 id="strategy-canvas-expand-title" className="backtest-chart-expand-title">
+                    Strategy canvas
+                  </h3>
+                  <button
+                    type="button"
+                    className="backtest-chart-expand-close"
+                    onClick={() => setCanvasExpanded(false)}
+                    aria-label="Close expanded canvas"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="backtest-chart-expand-body" style={{ overflow: "auto" }}>
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "1400px",
+                      height: "1100px",
+                      minWidth: "100%",
+                      minHeight: "80vh",
+                      borderRadius: 14,
+                      border: "1px solid #ede9e3",
+                      background: "#fff",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <NodeGraphCanvas
+                      blocks={expandedGraph?.blocks || []}
+                      edges={expandedGraph?.edges || []}
+                      connectors={expandedGraph?.connectors || []}
+                      wiringFrom={null}
+                      mousePos={{ x: 0, y: 0 }}
+                      onBlockPointerDown={() => {}}
+                      onPortPointerDown={() => {}}
+                      onPortPointerUp={() => {}}
+                      onEdgeDelete={() => {}}
+                      onConnectorDelete={() => {}}
+                      onConnectorDragStart={() => {}}
+                      BlockFieldsComponent={null}
+                      onBlockDelete={() => {}}
+                      onBlockParamChange={() => {}}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
   );
 }

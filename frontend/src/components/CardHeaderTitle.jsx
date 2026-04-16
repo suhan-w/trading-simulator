@@ -17,6 +17,7 @@ export default function CardHeaderTitle({
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const tipId = useId();
   const H = levels[headingLevel] || "h2";
 
   return (
@@ -32,7 +33,9 @@ export default function CardHeaderTitle({
                 onClick={() => setOpen((v) => !v)}
                 aria-expanded={open}
                 aria-controls={panelId}
+                aria-describedby={tipId}
                 aria-label="About this section"
+                data-tooltip={tooltipText}
               />
             ) : null}
           </div>
@@ -40,6 +43,11 @@ export default function CardHeaderTitle({
             <div id={panelId} className="pixel-tooltip-text" role="region">
               {tooltipText}
             </div>
+          ) : null}
+          {tooltipText ? (
+            <span id={tipId} className="sr-only" role="tooltip">
+              {tooltipText}
+            </span>
           ) : null}
           {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
         </div>

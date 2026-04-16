@@ -3,6 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { translateVisualBlocksToPython, translateVisualBlocksToPythonWithDiagnostics } from "../utils/strategyBuilderTranslate";
 import GlossaryDrawer from "./GlossaryDrawer";
+import NodeGraphCanvas from "./NodeGraphCanvas";
 import {
   VISUAL_SAVED_STRATEGIES_MAX,
   loadVisualStrategies,
@@ -17,6 +18,57 @@ const CANVAS_BLOCK_MIN_H = 56;
 
 function sortBlocksForCompile(blocks) {
   return [...blocks].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+}
+
+function topoSortBlocks(blocks, edges) {
+  if (!edges || edges.length === 0) {
+    // No edges — fall back to visual top-to-bottom order
+    return [...blocks].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+  }
+
+  // Build adjacency: fromNodeId -> [toNodeId, ...]
+  const adj = {};
+  const inDegree = {};
+  blocks.forEach((b) => {
+    adj[b.id] = [];
+    inDegree[b.id] = 0;
+  });
+
+  edges.forEach((e) => {
+    // Only count block-to-block edges (skip connector nodes)
+    if (adj[e.fromNodeId] !== undefined && inDegree[e.toNodeId] !== undefined) {
+      adj[e.fromNodeId].push(e.toNodeId);
+      inDegree[e.toNodeId] = (inDegree[e.toNodeId] || 0) + 1;
+    }
+  });
+
+  // Kahn's algorithm
+  const queue = blocks
+    .filter((b) => (inDegree[b.id] || 0) === 0)
+    .sort((a, b) => (a.y ?? 0) - (b.y ?? 0)); // tie-break by Y
+  const result = [];
+  const visited = new Set();
+
+  while (queue.length > 0) {
+    const node = queue.shift();
+    if (!node || visited.has(node.id)) continue;
+    visited.add(node.id);
+    result.push(node);
+    (adj[node.id] || []).forEach((nextId) => {
+      inDegree[nextId]--;
+      if (inDegree[nextId] === 0) {
+        const nextBlock = blocks.find((b) => b.id === nextId);
+        if (nextBlock) queue.push(nextBlock);
+      }
+    });
+  }
+
+  // Append any unvisited blocks (disconnected islands) sorted by Y
+  blocks.forEach((b) => {
+    if (!visited.has(b.id)) result.push(b);
+  });
+
+  return result;
 }
 
 function layoutColumn(blocks, x, y0, dy) {
@@ -56,7 +108,7 @@ const TYPE_CAT = {
 const PALETTE = [
   {
     key: "data",
-    label: "Data",
+    label: "DATA",
     dot: COL.data,
     blocks: [
       { type: "select_stock", label: "Select Stock" },
@@ -65,7 +117,7 @@ const PALETTE = [
   },
   {
     key: "indicator",
-    label: "Indicator",
+    label: "INDICATOR",
     dot: COL.indicator,
     blocks: [
       { type: "sma", label: "SMA" },
@@ -78,7 +130,7 @@ const PALETTE = [
   },
   {
     key: "condition",
-    label: "Condition",
+    label: "CONDITION",
     dot: COL.condition,
     blocks: [
       { type: "if_gt", label: "IF greater than" },
@@ -90,7 +142,7 @@ const PALETTE = [
   },
   {
     key: "action",
-    label: "Action",
+    label: "ACTION",
     dot: COL.action,
     blocks: [
       { type: "buy", label: "BUY" },
@@ -100,7 +152,7 @@ const PALETTE = [
   },
   {
     key: "risk",
-    label: "Risk",
+    label: "RISK",
     dot: COL.risk,
     blocks: [
       { type: "stop_loss", label: "Stop Loss" },
@@ -148,6 +200,29 @@ function defaultParams(type) {
     default:
       return {};
   }
+}
+
+function newConnectorId(connectorIdRef) {
+  return `conn-${Date.now()}-${connectorIdRef.current++}`;
+}
+function newEdgeId(edgeIdRef) {
+  return `edge-${Date.now()}-${edgeIdRef.current++}`;
+}
+function createConnector(type, x, y, connectorIdRef) {
+  return { id: newConnectorId(connectorIdRef), type, x, y };
+}
+// Returns center point of a port relative to the canvas (pre-pan)
+function getPortPos(nodeOrConn, port, portIndex = 0) {
+  const W = CANVAS_BLOCK_MIN_W;
+  const H = CANVAS_BLOCK_MIN_H;
+  if (port === "out") return { x: nodeOrConn.x + W, y: nodeOrConn.y + H / 2 };
+  // 'in' — connectors have two input ports stacked
+  const offsetY = portIndex === 1 ? 30 : 0;
+  return { x: nodeOrConn.x, y: nodeOrConn.y + H / 2 + offsetY };
+}
+function cubicBezierPath(x1, y1, x2, y2) {
+  const dx = Math.abs(x2 - x1) * 0.5;
+  return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
 }
 
 function createBlock(type) {
@@ -232,12 +307,25 @@ function borderForType(type) {
  * onStartChange?: (next: string) => void;
  * onEndChange?: (next: string) => void;
  * }} props */
-function BlockFields({ block, ticker, start, end, onChange, onTickerChange, onStartChange, onEndChange }) {
+function BlockFields({
+  block,
+  ticker,
+  start,
+  end,
+  onChange,
+  onTickerChange,
+  onStartChange,
+  onEndChange,
+  hideDataConfigFields = false,
+}) {
   const p = block.params || {};
   const set = (k, v) => onChange({ ...p, [k]: v });
 
   switch (block.type) {
     case "select_stock":
+      if (hideDataConfigFields) {
+        return <span className="text-[12px] text-[#aaa]">Configured in Backtesting</span>;
+      }
       return (
         <label className="flex items-center gap-1 text-[12px] text-ink">
           <span className="text-[#aaa]">Ticker</span>
@@ -250,6 +338,9 @@ function BlockFields({ block, ticker, start, end, onChange, onTickerChange, onSt
         </label>
       );
     case "select_date_range":
+      if (hideDataConfigFields) {
+        return <span className="text-[12px] text-[#aaa]">Configured in Backtesting</span>;
+      }
       return (
         <span className="flex flex-wrap items-center gap-1 text-[12px] text-ink">
           <span className="text-[#aaa]">From</span>
@@ -309,7 +400,19 @@ function BlockFields({ block, ticker, start, end, onChange, onTickerChange, onSt
         </span>
       );
     case "volume":
-      return <span className="text-[12px] text-[#aaa]">Volume series</span>;
+      return (
+        <label className="flex items-center gap-1 text-[12px] text-ink">
+          <span className="text-[#aaa]">SMA</span>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={Number(p.period) || 1}
+            onChange={(e) => set("period", Math.max(1, Number(e.target.value) || 1))}
+          />
+          <span className="text-[#aaa]">days</span>
+        </label>
+      );
     case "if_gt":
     case "if_lt":
       return (
@@ -325,7 +428,7 @@ function BlockFields({ block, ticker, start, end, onChange, onTickerChange, onSt
     case "if_cross_above":
     case "if_cross_below":
     case "if_two_indicators_cross":
-      return <span className="text-[12px] text-[#aaa]">Uses preceding indicators on canvas</span>;
+      return null;
     case "buy":
       return (
         <span className="flex flex-wrap items-center gap-2">
@@ -424,9 +527,14 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
     onStartChange,
     onEndChange,
     onExpandEditor,
+    onExpandCanvas,
     visualSaveEligible = false,
     onRunAvailabilityChange,
     visualImport = null,
+    hideDataConfigFields = false,
+    hideSavedStrategiesToolbar = false,
+    autoSyncCodeFromVisual = false,
+    renderLayout,
   },
   ref
 ) {
@@ -434,6 +542,12 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
   const [mode, setMode] = useState("visual");
   /** @type {CanvasBlock[]} */
   const [canvasBlocks, setCanvasBlocks] = useState(() => []);
+  const [edges, setEdges] = useState([]); // { id, fromNodeId, fromPort, toNodeId, toPort }
+  const [connectors, setConnectors] = useState([]); // { id, type, x, y } — AND/OR/THEN nodes
+  const [wiringFrom, setWiringFrom] = useState(null); // { nodeId, port: 'out'|'in', portIndex }
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const connectorIdRef = useRef(0);
+  const edgeIdRef = useRef(0);
   /** @type {{ id: string; title: string; blocks: CanvasBlock[]; savedAt: string }[]} */
   const [savedVisualStrategies, setSavedVisualStrategies] = useState(() => loadVisualStrategies());
   /** @type {string | null} */
@@ -463,7 +577,10 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
     setGeneratedDirty(false);
   }, []);
 
-  const sortedCanvasBlocks = useMemo(() => sortBlocksForCompile(canvasBlocks), [canvasBlocks]);
+  const sortedCanvasBlocks = useMemo(
+    () => topoSortBlocks(canvasBlocks, edges),
+    [canvasBlocks, edges]
+  );
 
   /** In-flow min height so absolute blocks below the fold extend scrollable area (templates stack vertically). */
   const canvasInnerMinHeight = useMemo(() => {
@@ -478,6 +595,13 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
     () => translateVisualBlocksToPythonWithDiagnostics(sortedCanvasBlocks, { ticker, start, end }),
     [sortedCanvasBlocks, ticker, start, end]
   );
+
+  useEffect(() => {
+    if (!autoSyncCodeFromVisual) return;
+    if (mode !== "visual") return;
+    if (strategyCompileErrors.length > 0) return;
+    setCode(previewFromVisual);
+  }, [autoSyncCodeFromVisual, mode, previewFromVisual, strategyCompileErrors.length, setCode]);
 
   useEffect(() => {
     if (mode === "generated" && !generatedDirty) {
@@ -556,6 +680,18 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
     e.dataTransfer.effectAllowed = "copy";
   };
 
+  useEffect(() => {
+    if (!wiringFrom) return undefined;
+    const onMove = (e) => {
+      const board = canvasBoardRef.current;
+      if (!board) return;
+      const rect = board.getBoundingClientRect();
+      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [wiringFrom]);
+
   const onCanvasDragOver = (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-cowrie-block") ? "copy" : "none";
@@ -624,6 +760,75 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   }, []);
+
+  const onPortPointerDown = useCallback((e, nodeId, port, portIndex = 0) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setWiringFrom({ nodeId, port, portIndex });
+  }, []);
+
+  const onPortPointerUp = useCallback((e, nodeId, port, portIndex = 0) => {
+    e.stopPropagation();
+    if (!wiringFrom) return;
+    // Prevent same-node connections
+    if (wiringFrom.nodeId === nodeId) { setWiringFrom(null); return; }
+    // Enforce out → in direction
+    const fromIsOut = wiringFrom.port === 'out';
+    const toIsIn = port === 'in';
+    if (!fromIsOut || !toIsIn) { setWiringFrom(null); return; }
+    const newEdge = {
+      id: newEdgeId(edgeIdRef),
+      fromNodeId: wiringFrom.nodeId, fromPort: wiringFrom.port, fromPortIndex: wiringFrom.portIndex,
+      toNodeId: nodeId, toPort: port, toPortIndex: portIndex,
+    };
+    setEdges(prev => {
+      // Deduplicate
+      if (prev.find(e2 => e2.fromNodeId === newEdge.fromNodeId && e2.toNodeId === newEdge.toNodeId)) return prev;
+      return [...prev, newEdge];
+    });
+    setWiringFrom(null);
+  }, [wiringFrom]);
+
+  const deleteEdge = useCallback((edgeId) => {
+    setEdges(prev => prev.filter(e => e.id !== edgeId));
+  }, []);
+
+  const deleteConnector = useCallback((connId) => {
+    setConnectors(prev => prev.filter(c => c.id !== connId));
+    setEdges(prev => prev.filter(e => e.fromNodeId !== connId && e.toNodeId !== connId));
+  }, []);
+
+  const connDragRef = useRef(null);
+
+  const onConnectorDragStart = useCallback((e, connId) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const conn = connectors.find(c => c.id === connId);
+    if (!conn) return;
+    connDragRef.current = {
+      id: connId,
+      startClientX: e.clientX, startClientY: e.clientY,
+      startX: conn.x, startY: conn.y,
+    };
+    const move = (ev) => {
+      const d = connDragRef.current;
+      if (!d) return;
+      const dx = ev.clientX - d.startClientX;
+      const dy = ev.clientY - d.startClientY;
+      setConnectors(prev => prev.map(c => c.id === d.id
+        ? { ...c, x: d.startX + dx, y: d.startY + dy }
+        : c
+      ));
+    };
+    const up = () => {
+      connDragRef.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [connectors]);
 
   const applyTemplate = (key) => {
     if (key === "ma") setCanvasBlocks(templateMa());
@@ -734,282 +939,340 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
       runBacktest: () => {
         void handleRun();
       },
+      getCanvasBlocks: () => JSON.parse(JSON.stringify(canvasBlocks)),
+      getGraphState: () => JSON.parse(JSON.stringify({ blocks: canvasBlocks, edges, connectors })),
+      importGraphState: ({ blocks, edges: e, connectors: c }) => {
+        setCanvasBlocks(cloneBlocksFromSaved(blocks || []));
+        setEdges(e || []);
+        setConnectors(c || []);
+      },
+      importCanvasBlocks: (blocks) => {
+        const next = cloneBlocksFromSaved(blocks || []); // order comes from edges now
+        setCanvasBlocks(next);
+        setGeneratedDirty(false);
+        setCode(translateVisualBlocksToPython(next, { ticker, start, end }));
+        setMode("visual");
+      },
+      applyTemplate: (key) => {
+        applyTemplate(key);
+        setMode("visual");
+      },
     }),
-    [handleRun]
+    [handleRun, canvasBlocks, ticker, start, end, setCode, edges, connectors]
   );
 
   const copyGenerated = () => {
     void navigator.clipboard.writeText(mode === "generated" ? generatedEditorText : previewFromVisual);
   };
 
-  return (
-    <div className="strategy-builder-section">
-      <div className="strategy-builder-mode-row">
-        <div className="strategy-mode-flow min-w-0 flex-1" role="tablist" aria-label="Strategy editor mode">
-          <span className="strategy-mode-flow-label strategy-mode-flow-label--builder">Strategy Builder</span>
-          <span className="strategy-mode-flow-label strategy-mode-flow-label--editor">Editor</span>
-          <div className="strategy-mode-flow-builder">
-            <div className="strategy-mode-builder-pair">
-              <button
-                type="button"
-                role="tab"
-                className={`strategy-mode-tab strategy-mode-tab-visual${mode === "visual" ? " strategy-mode-tab-visual--active" : ""}`}
-                aria-selected={mode === "visual"}
-                title="Build your strategy using blocks — no coding needed"
-                onClick={() => handleMode("visual")}
-              >
-                Visual Builder
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className={`strategy-mode-tab strategy-mode-tab-generated${mode === "generated" ? " strategy-mode-tab-generated--active" : ""}`}
-                aria-selected={mode === "generated"}
-                title="See the Python code generated from your blocks"
-                onClick={() => handleMode("generated")}
-              >
-                <span className="strategy-mode-tab-generated-label">Generated Code</span>
-                {!generatedDirty ? (
-                  <span className="strategy-mode-sync-dot" title="Generated code matches your blocks" aria-hidden />
-                ) : null}
-              </button>
-            </div>
-          </div>
-          <span className="strategy-mode-flow-arrow" aria-hidden>
-            →
-          </span>
-          <div className="strategy-mode-flow-editor">
+  const modeTabsEl = (
+    <div className="strategy-builder-mode-row">
+      <div className="strategy-mode-flow min-w-0 flex-1" role="tablist" aria-label="Strategy editor mode">
+        <span className="strategy-mode-flow-label strategy-mode-flow-label--builder">Strategy Builder</span>
+        <span className="strategy-mode-flow-label strategy-mode-flow-label--editor">Editor</span>
+        <div className="strategy-mode-flow-builder">
+          <div className="strategy-mode-builder-pair">
             <button
               type="button"
               role="tab"
-              className={`strategy-mode-tab strategy-mode-tab-raw${mode === "raw" ? " strategy-mode-tab-raw--active" : ""}`}
-              aria-selected={mode === "raw"}
-              title="Write or edit Python directly for full control"
-              onClick={() => handleMode("raw")}
+              className={`strategy-mode-tab strategy-mode-tab-visual${mode === "visual" ? " strategy-mode-tab-visual--active" : ""}`}
+              aria-selected={mode === "visual"}
+              title="Build your strategy using blocks — no coding needed"
+              onClick={() => handleMode("visual")}
             >
-              <span>Raw Python</span>
-              <span className="strategy-mode-advanced-pill">Advanced</span>
+              Visual Builder
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={`strategy-mode-tab strategy-mode-tab-generated${mode === "generated" ? " strategy-mode-tab-generated--active" : ""}`}
+              aria-selected={mode === "generated"}
+              title="See the Python code generated from your blocks"
+              onClick={() => handleMode("generated")}
+            >
+              <span className="strategy-mode-tab-generated-label">Generated Code</span>
+              {!generatedDirty ? <span className="strategy-mode-sync-dot" title="Generated code matches your blocks" aria-hidden /> : null}
             </button>
           </div>
         </div>
+        <span className="strategy-mode-flow-arrow" aria-hidden>
+          →
+        </span>
+        <div className="strategy-mode-flow-editor">
+          <button
+            type="button"
+            role="tab"
+            className={`strategy-mode-tab strategy-mode-tab-raw${mode === "raw" ? " strategy-mode-tab-raw--active" : ""}`}
+            aria-selected={mode === "raw"}
+            title="Write or edit Python directly for full control"
+            onClick={() => handleMode("raw")}
+          >
+            <span>Raw Python</span>
+            <span className="strategy-mode-advanced-pill">Advanced</span>
+          </button>
+        </div>
       </div>
+    </div>
+  );
 
-      {mode === "visual" && (
-        <div className="backtest-builder-top-shell">
-          <aside className="block-palette block-palette--backtest" aria-label="Block palette">
-            {PALETTE.map((cat) => (
-              <div key={cat.key}>
-                <button
-                  type="button"
-                  className="category-header w-full border-0 bg-transparent p-0 text-left"
-                  onClick={() => setOpenCats((o) => ({ ...o, [cat.key]: !o[cat.key] }))}
-                  aria-expanded={openCats[cat.key]}
-                >
-                  <span className="category-dot" style={{ background: cat.dot }} />
-                  {cat.label}
-                </button>
-                {openCats[cat.key] ? (
-                  <div>
-                    {cat.blocks.map((b) => (
-                      <div
-                        key={b.type}
-                        className="palette-block palette-block--row"
-                        style={{ borderLeftColor: cat.dot }}
-                        draggable
-                        onDragStart={(e) => {
-                          const t = e.target;
-                          if (t instanceof Element && t.closest(".glossary-palette-info")) {
-                            e.preventDefault();
-                            return;
-                          }
-                          onPaletteDragStart(e, b.type);
-                        }}
-                        onDragEnd={clearDrag}
-                      >
-                        <span className="palette-block-label">{b.label}</span>
-                        <button
-                          type="button"
-                          className="glossary-palette-info"
-                          aria-label={`Open glossary: ${b.label}`}
-                          draggable={false}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            setGlossaryType(b.type);
-                          }}
-                          onPointerDown={(e) => e.stopPropagation()}
-                        >
-                          i
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </aside>
-
-          <div className="backtest-builder-right-column">
-            <div className="backtest-canvas-toolbar">
-              <button
-                type="button"
-                className="strategy-clear-canvas-btn strategy-clear-canvas-btn--toolbar"
-                onClick={clearCanvas}
-                disabled={canvasBlocks.length === 0}
-                aria-label="Clear all blocks from the canvas"
-              >
-                Clear canvas
-              </button>
-              <div className="backtest-canvas-toolbar-templates">
-                <div className="strategy-canvas-templates__block strategy-canvas-templates__block--inline">
-                  <p className="strategy-canvas-templates__label">My strategies</p>
-                  <div className="strategy-canvas-templates__row flex flex-wrap items-center gap-2">
-                    {savedVisualStrategies.length === 0 ? (
-                      <span className="text-[11px] leading-snug text-[#999]">None yet — save after a successful run.</span>
-                    ) : null}
-                    {savedVisualStrategies.map((s) => (
-                      <div key={s.id} className="visual-saved-chip">
-                        <button
-                          type="button"
-                          className="template-btn template-btn--saved"
-                          onClick={() => loadVisualLayout(s)}
-                          title={`Load saved layout “${s.title}”`}
-                        >
-                          {s.title}
-                        </button>
-                        <button
-                          type="button"
-                          className="visual-saved-remove"
-                          aria-label={`Remove saved layout ${s.title}`}
-                          onClick={() => removeVisualLayout(s.id)}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    {visualSaveEligible && canvasBlocks.length > 0 ? (
-                      <button type="button" className="template-btn template-btn--save" onClick={saveVisualLayout}>
-                        Save layout…
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="strategy-canvas-templates__block strategy-canvas-templates__block--inline">
-                  <p className="strategy-canvas-templates__label">Examples</p>
-                  <div className="strategy-canvas-templates__row flex flex-wrap gap-2">
-                    <button type="button" className="template-btn" onClick={() => applyTemplate("ma")}>
-                      Moving Average Crossover
-                    </button>
-                    <button type="button" className="template-btn" onClick={() => applyTemplate("rsi")}>
-                      RSI Overbought/Oversold
-                    </button>
-                    <button type="button" className="template-btn" onClick={() => applyTemplate("bh")}>
-                      Buy and Hold
+  const paletteEl =
+    mode === "visual" ? (
+      <aside className="block-palette block-palette--backtest" aria-label="Block palette">
+        {PALETTE.map((cat) => (
+          <div key={cat.key}>
+            <button
+              type="button"
+              className="category-header w-full border-0 bg-transparent p-0 text-left"
+              onClick={() => setOpenCats((o) => ({ ...o, [cat.key]: !o[cat.key] }))}
+              aria-expanded={openCats[cat.key]}
+            >
+              <span className="category-dot" style={{ background: cat.dot }} />
+              {cat.label}
+            </button>
+            {openCats[cat.key] ? (
+              <div>
+                {cat.blocks.map((b) => (
+                  <div
+                    key={b.type}
+                    className="palette-block palette-block--row"
+                    style={{ borderLeftColor: cat.dot }}
+                    draggable
+                    onDragStart={(e) => {
+                      const t = e.target;
+                      if (t instanceof Element && t.closest(".glossary-palette-info")) {
+                        e.preventDefault();
+                        return;
+                      }
+                      onPaletteDragStart(e, b.type);
+                    }}
+                    onDragEnd={clearDrag}
+                  >
+                    <span className="palette-block-label">{b.label}</span>
+                    <button
+                      type="button"
+                      className="glossary-palette-info"
+                      aria-label={`Open glossary: ${b.label}`}
+                      draggable={false}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setGlossaryType(b.type);
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      i
                     </button>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {strategyCompileErrors.length > 0 ? (
-              <div
-                className="strategy-compile-errors mb-2 shrink-0 rounded-lg border px-3 py-2 text-[12px] leading-snug"
-                role="alert"
-              >
-                <p className="m-0 mb-1 font-semibold text-ink">This layout cannot run yet</p>
-                <ul className="m-0 list-disc pl-5 text-[#5c5348]">
-                  {strategyCompileErrors.map((err, i) => (
-                    <li key={`${i}-${err}`}>{err}</li>
-                  ))}
-                </ul>
+                ))}
               </div>
             ) : null}
+          </div>
+        ))}
+      </aside>
+    ) : null;
 
-            <div className="strategy-canvas strategy-canvas--2d">
-              <div
-                className={`canvas-board-2d ${canvasDragOver ? "canvas-board-2d--drag-active" : ""}`}
-                onDragOver={onCanvasDragOver}
-                onDragLeave={onCanvasDragLeave}
-                onDrop={onCanvasBoardDrop}
-                onDragEnd={clearDrag}
-              >
-                <div
-                  ref={canvasBoardRef}
-                  className="canvas-board-2d-inner"
-                  style={{ minHeight: canvasInnerMinHeight }}
-                >
-                  <span className="canvas-zone-label canvas-zone-label--entry" aria-hidden>
-                    ENTRY CONDITIONS
-                  </span>
-                  <span className="canvas-zone-label canvas-zone-label--exit" aria-hidden>
-                    EXIT CONDITIONS
-                  </span>
-                  <span className="canvas-zone-label canvas-zone-label--risk" aria-hidden>
-                    RISK RULES
-                  </span>
-                  {canvasBlocks.length === 0 ? (
-                    <div className="strategy-canvas-empty strategy-canvas-empty--2d">
-                      <span className="strategy-canvas-empty-icon" aria-hidden />
-                      <p className="m-0 text-[13px] text-[#aaa]">Drag blocks from the palette to place them on the canvas</p>
-                    </div>
+  const visualPanelEl =
+    mode === "visual" ? (
+      <div className="backtest-builder-right-column">
+        <div className="backtest-canvas-toolbar">
+          <button
+            type="button"
+            className="strategy-clear-canvas-btn strategy-clear-canvas-btn--toolbar"
+            onClick={clearCanvas}
+            disabled={canvasBlocks.length === 0}
+            aria-label="Clear all blocks from the canvas"
+          >
+            Clear canvas
+          </button>
+          {mode === "visual" && (
+            <div style={{ display:"flex", gap:6, marginLeft:"auto" }}>
+              {["AND","OR","THEN"].map(type => (
+                <button key={type}
+                  style={{
+                    fontSize:11, padding:"3px 10px",
+                    border:"0.5px solid var(--color-border-secondary,rgba(0,0,0,0.2))",
+                    borderRadius:5, background:"var(--color-background-secondary,#f5f3ef)",
+                    color:"var(--color-text-secondary,#666)", cursor:"pointer",
+                  }}
+                  onClick={() => {
+                    const x = 200 + Math.random() * 160;
+                    const y = 160 + Math.random() * 100;
+                    setConnectors(prev => [...prev, createConnector(type, x, y, connectorIdRef)]);
+                  }}>
+                  + {type}
+                </button>
+              ))}
+              <button style={{ fontSize:11, padding:"3px 10px",
+                border:"0.5px solid var(--color-border-secondary,rgba(0,0,0,0.2))",
+                borderRadius:5, background:"transparent", color:"var(--color-text-tertiary,#999)", cursor:"pointer" }}
+                onClick={() => { setConnectors([]); setEdges([]); }}>
+                Clear wires
+              </button>
+            </div>
+          )}
+          <div className="backtest-canvas-toolbar-templates">
+            {!hideSavedStrategiesToolbar ? (
+              <div className="strategy-canvas-templates__block strategy-canvas-templates__block--inline">
+                <p className="strategy-canvas-templates__label">My strategies</p>
+                <div className="strategy-canvas-templates__row flex flex-wrap items-center gap-2">
+                  {savedVisualStrategies.length === 0 ? (
+                    <span className="text-[11px] leading-snug text-[#999]">None yet — save after a successful run.</span>
                   ) : null}
-                  {canvasBlocks.map((b) => (
-                    <div
-                      key={b.id}
-                      className="canvas-block canvas-block--free"
-                      style={{
-                        left: b.x,
-                        top: b.y,
-                        borderLeftColor: borderForType(b.type),
-                      }}
-                      onPointerDown={(e) => onBlockPointerDown(e, b)}
-                    >
-                      <span className="canvas-block-free-title">{PALETTE_LABELS[b.type] || b.type}</span>
-                      <div className="canvas-block-free-fields">
-                        <BlockFields
-                          block={b}
-                          ticker={ticker}
-                          start={start}
-                          end={end}
-                          onTickerChange={onTickerChange}
-                          onStartChange={onStartChange}
-                          onEndChange={onEndChange}
-                          onChange={(params) => updateBlockParams(b.id, params)}
-                        />
-                      </div>
+                  {savedVisualStrategies.map((s) => (
+                    <div key={s.id} className="visual-saved-chip">
                       <button
                         type="button"
-                        className="delete-btn"
-                        aria-label="Remove block"
-                        onClick={() => removeBlock(b.id)}
+                        className="template-btn template-btn--saved"
+                        onClick={() => loadVisualLayout(s)}
+                        title={`Load saved layout “${s.title}”`}
+                      >
+                        {s.title}
+                      </button>
+                      <button
+                        type="button"
+                        className="visual-saved-remove"
+                        aria-label={`Remove saved layout ${s.title}`}
+                        onClick={() => removeVisualLayout(s.id)}
                       >
                         ×
                       </button>
                     </div>
                   ))}
+                  {visualSaveEligible && canvasBlocks.length > 0 ? (
+                    <button type="button" className="template-btn template-btn--save" onClick={saveVisualLayout}>
+                      Save layout…
+                    </button>
+                  ) : null}
                 </div>
+              </div>
+            ) : null}
+            <div className="strategy-canvas-templates__block strategy-canvas-templates__block--inline">
+              <p className="strategy-canvas-templates__label">Examples</p>
+              <div className="strategy-canvas-templates__row flex flex-wrap gap-2">
+                <button type="button" className="template-btn" onClick={() => applyTemplate("ma")}>
+                  Moving Average Crossover
+                </button>
+                <button type="button" className="template-btn" onClick={() => applyTemplate("rsi")}>
+                  RSI Overbought/Oversold
+                </button>
+                <button type="button" className="template-btn" onClick={() => applyTemplate("bh")}>
+                  Buy and Hold
+                </button>
               </div>
             </div>
           </div>
         </div>
-      )}
 
-      {mode === "generated" && (
-        <div className="backtest-builder-editor-shell">
+        {strategyCompileErrors.length > 0 ? (
+          <div className="strategy-compile-errors mb-2 shrink-0 rounded-lg border px-3 py-2 text-[12px] leading-snug" role="alert">
+            <p className="m-0 mb-1 font-semibold text-ink">This layout cannot run yet</p>
+            <ul className="m-0 list-disc pl-5 text-[#5c5348]">
+              {strategyCompileErrors.map((err, i) => (
+                <li key={`${i}-${err}`}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="strategy-canvas strategy-canvas--2d">
+          <div
+            ref={canvasBoardRef}
+            className={`canvas-board-2d ${canvasDragOver ? "canvas-board-2d--drag-active" : ""}`}
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              minHeight: canvasInnerMinHeight,
+            }}
+            onDragOver={onCanvasDragOver}
+            onDrop={onCanvasBoardDrop}
+            onDragLeave={() => setCanvasDragOver(false)}
+            onDragEnd={clearDrag}
+          >
+            <div
+              className="canvas-bg"
+              onClick={() => {
+                if (typeof onExpandCanvas === "function") onExpandCanvas();
+              }}
+            />
+            <NodeGraphCanvas
+              blocks={canvasBlocks}
+              edges={edges}
+              connectors={connectors}
+              wiringFrom={wiringFrom}
+              mousePos={mousePos}
+              onBlockPointerDown={onBlockPointerDown}
+              onPortPointerDown={onPortPointerDown}
+              onPortPointerUp={onPortPointerUp}
+              onEdgeDelete={deleteEdge}
+              onConnectorDelete={deleteConnector}
+              onConnectorDragStart={onConnectorDragStart}
+              BlockFieldsComponent={(props) => (
+                <BlockFields
+                  {...props}
+                  ticker={ticker}
+                  start={start}
+                  end={end}
+                  onTickerChange={onTickerChange}
+                  onStartChange={onStartChange}
+                  onEndChange={onEndChange}
+                  hideDataConfigFields={hideDataConfigFields}
+                />
+              )}
+              onBlockDelete={(id) => {
+                setCanvasBlocks((prev) => prev.filter((b) => b.id !== id));
+                setEdges((prev) => prev.filter((e) => e.fromNodeId !== id && e.toNodeId !== id));
+              }}
+              onBlockParamChange={(id, key, val) =>
+                setCanvasBlocks((prev) =>
+                  prev.map((b) => {
+                    if (b.id !== id) return b;
+                    if (key === "params" && val && typeof val === "object") return { ...b, params: val };
+                    return { ...b, params: { ...(b.params || {}), [key]: val } };
+                  })
+                )
+              }
+            />
+            {canvasBlocks.length === 0 && connectors.length === 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "var(--color-text-tertiary,#999)",
+                    background: "var(--color-background-secondary,#f5f3ef)",
+                    padding: "4px 12px",
+                    borderRadius: 10,
+                    border: "0.5px solid var(--color-border-tertiary,rgba(0,0,0,0.1))",
+                  }}
+                >
+                  Drag blocks from the palette · Connect ports to wire logic · Right-click edges to delete
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null;
+
+  const generatedPanelEl =
+    mode === "generated" ? (
+      <div className="backtest-builder-editor-shell">
         <div className="strategy-generated-panel rounded-[14px] border border-[#ede9e3] bg-white p-4">
           {generatedDirty ? (
-            <div
-              className="mb-3 rounded-lg border px-3 py-2 text-[12px]"
-              style={{ background: "#fdf8f0", borderColor: "#e8d5b0", color: "#111" }}
-            >
+            <div className="mb-3 rounded-lg border px-3 py-2 text-[12px]" style={{ background: "#fdf8f0", borderColor: "#e8d5b0", color: "#111" }}>
               You have manually edited the generated code. Switching to Visual Builder will reset these changes.
             </div>
           ) : null}
           {!generatedDirty && strategyCompileErrors.length > 0 ? (
-            <div
-              className="strategy-compile-errors mb-3 rounded-lg border px-3 py-2 text-[12px] leading-snug"
-              role="alert"
-            >
+            <div className="strategy-compile-errors mb-3 rounded-lg border px-3 py-2 text-[12px] leading-snug" role="alert">
               <p className="m-0 mb-1 font-semibold text-ink">Fix the visual canvas to regenerate runnable code</p>
               <ul className="m-0 list-disc pl-5 text-[#5c5348]">
                 {strategyCompileErrors.map((err, i) => (
@@ -1019,11 +1282,7 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
             </div>
           ) : null}
           <div className="mb-2 flex justify-end gap-2">
-            <button
-              type="button"
-              className="strategy-copy-code-btn rounded-lg px-3 py-1.5 text-[11px] font-semibold"
-              onClick={copyGenerated}
-            >
+            <button type="button" className="strategy-copy-code-btn rounded-lg px-3 py-1.5 text-[11px] font-semibold" onClick={copyGenerated}>
               Copy Code
             </button>
             <button
@@ -1050,11 +1309,12 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
             className="overflow-hidden rounded-lg border border-ink/[0.08] text-left shadow-card-sm"
           />
         </div>
-        </div>
-      )}
+      </div>
+    ) : null;
 
-      {mode === "raw" && (
-        <div className="backtest-builder-editor-shell">
+  const rawPanelEl =
+    mode === "raw" ? (
+      <div className="backtest-builder-editor-shell">
         <div className="strategy-raw-panel rounded-[14px] border border-[#ede9e3] bg-white p-4">
           <div className="mb-2 flex justify-end gap-2">
             {onExpandEditor ? (
@@ -1080,8 +1340,30 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
             />
           </div>
         </div>
-        </div>
-      )}
+      </div>
+    ) : null;
+
+  const panelEl = mode === "visual" ? visualPanelEl : mode === "generated" ? generatedPanelEl : rawPanelEl;
+
+  if (typeof renderLayout === "function") {
+    return (
+      <>
+        {renderLayout({ mode, modeTabs: modeTabsEl, palette: paletteEl, panel: panelEl })}
+        <GlossaryDrawer
+          type={glossaryType}
+          onClose={closeGlossary}
+          onNavigate={setGlossaryType}
+          onAddToCanvas={appendBlockFromGlossary}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className="strategy-builder-section">
+      {modeTabsEl}
+      {mode === "visual" ? <div className="backtest-builder-top-shell">{paletteEl}{visualPanelEl}</div> : null}
+      {mode !== "visual" ? panelEl : null}
 
       <GlossaryDrawer
         type={glossaryType}
