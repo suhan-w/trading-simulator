@@ -241,7 +241,7 @@ export function ComparisonChartPanel({
     const bSeries = chart.addLineSeries({
       color: "#aaaaaa",
       lineWidth: 2,
-      title: benchLabel || "Benchmark",
+      // No `title` — library draws an on-canvas legend that overlaps small plots; HTML legend below shows the label.
       ...(dailyPercentComparison ? { priceFormat: pctPriceFormat } : {}),
     });
     pSeries.setData(portfolio.map((p) => ({ time: isoOrDateToTime(p.date), value: p.value })));

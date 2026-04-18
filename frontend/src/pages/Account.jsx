@@ -1,12 +1,12 @@
-import { useCallback, useId, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatAud } from "../formatAud";
 import ResetSessionModal from "../components/ResetSessionModal";
 
 const ACCOUNT_PAGE_TOOLTIP =
-  "Manage your Alpha Vantage API key and session. ASX closing prices use your key’s daily quota.";
+  "Manage your Alpha Vantage API key, private or public leaderboard visibility for paper trading, and session. ASX closing prices use your key’s daily quota.";
 
 function goldTitleMarker() {
   return (
@@ -63,6 +63,10 @@ export default function Account() {
   const [resetBusy, setResetBusy] = useState(false);
   const [titleTipOpen, setTitleTipOpen] = useState(false);
   const accountTitleTipId = useId();
+  const [paperLbEntry, setPaperLbEntry] = useState(null);
+  const [paperLbLoading, setPaperLbLoading] = useState(false);
+  const [paperLbError, setPaperLbError] = useState(null);
+  const [paperShareBusy, setPaperShareBusy] = useState(false);
 
   const username = useMemo(
     () => displayUsername(user?.email, user?.is_guest),
@@ -77,6 +81,54 @@ export default function Account() {
 
   const avLimit = user?.alpha_vantage_daily_limit ?? 25;
   const avUsed = user?.alpha_vantage_requests_used_today ?? 0;
+
+  useEffect(() => {
+    if (!user) {
+      setPaperLbEntry(null);
+      setPaperLbError(null);
+      setPaperLbLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setPaperLbLoading(true);
+    setPaperLbError(null);
+    api
+      .leaderboardMine()
+      .then((rows) => {
+        if (cancelled) return;
+        const paper = rows.find((r) => r.source === "paper");
+        setPaperLbEntry(
+          paper ? { id: paper.id, share_public: Boolean(paper.share_public) } : null
+        );
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPaperLbEntry(null);
+          setPaperLbError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPaperLbLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const onPaperShareToggle = useCallback(async (next) => {
+    const current = paperLbEntry?.share_public ?? false;
+    if (current === next) return;
+    setPaperShareBusy(true);
+    setPaperLbError(null);
+    try {
+      const out = await api.patchPaperLeaderboardSharing({ share_public: next });
+      setPaperLbEntry({ id: out.id, share_public: Boolean(out.share_public) });
+    } catch (err) {
+      setPaperLbError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPaperShareBusy(false);
+    }
+  }, [paperLbEntry]);
 
   async function onSave(e) {
     e.preventDefault();
@@ -134,7 +186,7 @@ export default function Account() {
           </div>
         ) : null}
         <p className="page-subtitle">
-          Your profile, market data key, and options to reset the paper portfolio.
+          Your profile, private or public leaderboard visibility, market data key, and options to reset the paper portfolio.
         </p>
       </div>
 
@@ -234,6 +286,67 @@ export default function Account() {
               {saving ? "Saving…" : "Save API Key"}
             </button>
           </form>
+        </div>
+
+        <div className="account-lb-visibility-card cs-card flex flex-col gap-4 p-5 md:p-6">
+          <h2 className="text-sm font-semibold text-ink">Private or public account</h2>
+          <p className="text-sm leading-relaxed text-muted">
+            Choose whether your <strong className="font-semibold text-ink">paper trading</strong> row can appear on
+            community leaderboards. You are always anonymous (no username). The same choice is available on{" "}
+            <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
+              Trade
+            </Link>
+            .
+          </p>
+          {paperLbLoading ? (
+            <p className="text-sm font-mono text-muted">Loading leaderboard settings…</p>
+          ) : paperLbError ? (
+            <p className="text-sm font-mono font-semibold text-danger">{paperLbError}</p>
+          ) : (
+            <>
+              <p className="text-xs leading-relaxed text-muted">
+                You can switch anytime. If you have not traded yet, a paper leaderboard row is created when you save your
+                choice so your preference is remembered.
+              </p>
+              <fieldset
+                className="account-lb-fieldset"
+                disabled={paperShareBusy}
+                aria-busy={paperShareBusy}
+              >
+                <legend className="sr-only">Paper account visibility on leaderboards</legend>
+                <label
+                  className={`account-lb-option ${!(paperLbEntry?.share_public ?? false) ? "account-lb-option--selected" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="account-lb-visibility"
+                    className="sr-only"
+                    checked={!(paperLbEntry?.share_public ?? false)}
+                    onChange={() => void onPaperShareToggle(false)}
+                  />
+                  <span className="account-lb-option-title">Private account</span>
+                  <span className="account-lb-option-desc">
+                    Your paper results are not shown on community leaderboards.
+                  </span>
+                </label>
+                <label
+                  className={`account-lb-option ${paperLbEntry?.share_public ? "account-lb-option--selected" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="account-lb-visibility"
+                    className="sr-only"
+                    checked={Boolean(paperLbEntry?.share_public)}
+                    onChange={() => void onPaperShareToggle(true)}
+                  />
+                  <span className="account-lb-option-title">Public account</span>
+                  <span className="account-lb-option-desc">
+                    Your paper row can appear on leaderboards anonymously (no username).
+                  </span>
+                </label>
+              </fieldset>
+            </>
+          )}
         </div>
 
         <div

@@ -31,6 +31,8 @@ export default function DailyReturnHistogram({
   rows,
   height = 220,
   embedded = false,
+  /** Grow to parent height (e.g. Performance chart cards); `height` is the minimum pixel height */
+  fillHeight = false,
 }) {
   const containerRef = useRef(null);
 
@@ -38,10 +40,13 @@ export default function DailyReturnHistogram({
     const el = containerRef.current;
     if (!el || !rows?.length) return undefined;
 
+    const chartHeight = () =>
+      fillHeight ? Math.max(el.clientHeight || 0, height) : height;
+
     const chart = createChart(el, {
       ...layoutOpts,
       width: el.clientWidth,
-      height,
+      height: chartHeight(),
     });
     const series = chart.addHistogramSeries({
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
@@ -56,7 +61,13 @@ export default function DailyReturnHistogram({
     chart.timeScale().fitContent();
 
     const ro = new ResizeObserver(() => {
-      if (el.clientWidth > 0) chart.applyOptions({ width: el.clientWidth });
+      if (el.clientWidth <= 0) return;
+      if (fillHeight) {
+        const h = Math.max(el.clientHeight, height);
+        if (h > 0) chart.applyOptions({ width: el.clientWidth, height: h });
+      } else {
+        chart.applyOptions({ width: el.clientWidth });
+      }
     });
     ro.observe(el);
 
@@ -64,12 +75,22 @@ export default function DailyReturnHistogram({
       ro.disconnect();
       chart.remove();
     };
-  }, [rows, height]);
+  }, [rows, height, fillHeight]);
 
   const body = !rows?.length ? (
-    <p className="py-10 text-center font-mono text-sm text-[#888]">No data available for this range</p>
+    <p
+      className={`text-center font-mono text-sm text-[#888] ${
+        fillHeight ? "flex min-h-0 flex-1 items-center justify-center py-8" : "py-10"
+      }`}
+    >
+      No data available for this range
+    </p>
   ) : (
-    <div ref={containerRef} className="w-full" style={{ height }} />
+    <div
+      ref={containerRef}
+      className={`w-full ${fillHeight ? "min-h-0 flex-1" : ""}`}
+      style={fillHeight ? { minHeight: height } : { height }}
+    />
   );
 
   if (embedded) {

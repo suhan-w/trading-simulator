@@ -86,6 +86,7 @@ const COL = {
 const TYPE_CAT = {
   select_stock: "data",
   select_date_range: "data",
+  select_data: "data",
   sma: "indicator",
   ema: "indicator",
   rsi: "indicator",
@@ -110,10 +111,7 @@ const PALETTE = [
     key: "data",
     label: "DATA",
     dot: COL.data,
-    blocks: [
-      { type: "select_stock", label: "Select Stock" },
-      { type: "select_date_range", label: "Select Date Range" },
-    ],
+    blocks: [{ type: "select_data", label: "Stock & date range" }],
   },
   {
     key: "indicator",
@@ -190,13 +188,18 @@ function defaultParams(type) {
     case "buy":
       return { mode: "all_cash", fixedAmount: 0.5, pctAmount: 100 };
     case "sell":
-      return { mode: "all" };
+      return { mode: "all", fixedAmount: 0.5, pctAmount: 50 };
     case "stop_loss":
       return { pct: 5 };
     case "take_profit":
       return { pct: 10 };
     case "max_position":
       return { pct: 25 };
+    case "select_data": {
+      const end = new Date().toISOString().slice(0, 10);
+      const start = new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().slice(0, 10);
+      return { ticker: "CBA.AX", start, end };
+    }
     default:
       return {};
   }
@@ -246,8 +249,7 @@ function cloneBlocksFromSaved(blocks) {
 function templateMa() {
   return layoutColumn(
     [
-      createBlock("select_stock"),
-      createBlock("select_date_range"),
+      createBlock("select_data"),
       { ...createBlock("sma"), params: { period: 20 } },
       { ...createBlock("sma"), params: { period: 50 } },
       createBlock("if_cross_above"),
@@ -264,8 +266,7 @@ function templateMa() {
 function templateRsi() {
   return layoutColumn(
     [
-      createBlock("select_stock"),
-      createBlock("select_date_range"),
+      createBlock("select_data"),
       { ...createBlock("rsi"), params: { period: 14 } },
       { ...createBlock("if_lt"), params: { threshold: 30 } },
       { ...createBlock("buy"), params: { mode: "all_cash" } },
@@ -281,8 +282,7 @@ function templateRsi() {
 function templateBh() {
   return layoutColumn(
     [
-      createBlock("select_stock"),
-      createBlock("select_date_range"),
+      createBlock("select_data"),
       { ...createBlock("buy"), params: { mode: "all_cash" } },
       createBlock("hold"),
     ],
@@ -322,6 +322,33 @@ function BlockFields({
   const set = (k, v) => onChange({ ...p, [k]: v });
 
   switch (block.type) {
+    case "select_data": {
+      const tk = typeof p.ticker === "string" ? p.ticker : "";
+      const ds = typeof p.start === "string" ? p.start : "";
+      const de = typeof p.end === "string" ? p.end : "";
+      return (
+        <div className="flex flex-col gap-1.5 text-[11px] leading-tight text-ink">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[#aaa]">Ticker</span>
+            <input
+              type="text"
+              className="max-w-full"
+              value={tk}
+              placeholder="CBA.AX"
+              onChange={(e) => set("ticker", e.target.value.toUpperCase())}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[#aaa]">From</span>
+            <input type="date" className="max-w-full" value={ds} onChange={(e) => set("start", e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[#aaa]">To</span>
+            <input type="date" className="max-w-full" value={de} onChange={(e) => set("end", e.target.value)} />
+          </label>
+        </div>
+      );
+    }
     case "select_stock":
       if (hideDataConfigFields) {
         return <span className="text-[12px] text-[#aaa]">Configured in Backtesting</span>;
@@ -429,29 +456,36 @@ function BlockFields({
     case "if_cross_below":
     case "if_two_indicators_cross":
       return null;
-    case "buy":
+    case "buy": {
+      const mode = (p.mode || "all_cash") === "fixed" ? "fixed" : (p.mode || "all_cash") === "pct" ? "pct" : "all_cash";
       return (
-        <span className="flex flex-wrap items-center gap-2">
-          <select
-            value={(p.mode || "all_cash") === "fixed" ? "fixed" : (p.mode || "all_cash") === "pct" ? "pct" : "all_cash"}
-            onChange={(e) => set("mode", e.target.value)}
-          >
-            <option value="all_cash">All cash</option>
-            <option value="fixed">Fixed amount</option>
-            <option value="pct">% of portfolio</option>
-          </select>
-          {(p.mode || "all_cash") === "fixed" ? (
-            <input
-              type="number"
-              min={0.01}
-              step={0.01}
-              value={Number(p.fixedAmount) || 0.5}
-              onChange={(e) => set("fixedAmount", Number(e.target.value))}
-              title="AUD (paper)"
-            />
+        <div className="flex flex-col gap-1.5 text-[12px] text-ink">
+          <label className="flex items-center gap-1 text-[12px] text-ink">
+            <span className="text-[#aaa]">Mode</span>
+            <select
+              className="max-w-[min(100%,11rem)] bg-transparent py-0 text-[12px] leading-tight text-ink"
+              value={mode}
+              onChange={(e) => set("mode", e.target.value)}
+            >
+              <option value="all_cash">All cash</option>
+              <option value="fixed">Fixed amount</option>
+              <option value="pct">% of portfolio</option>
+            </select>
+          </label>
+          {mode === "fixed" ? (
+            <label className="flex items-center gap-1 text-[12px] text-ink" title="AUD (paper)">
+              <span className="text-[#aaa]">AUD</span>
+              <input
+                type="number"
+                min={0.01}
+                step={0.01}
+                value={Number(p.fixedAmount) || 0.5}
+                onChange={(e) => set("fixedAmount", Number(e.target.value))}
+              />
+            </label>
           ) : null}
-          {(p.mode || "all_cash") === "pct" ? (
-            <label className="flex items-center gap-1 text-[11px] text-[#aaa]">
+          {mode === "pct" ? (
+            <label className="flex items-center gap-1 text-[12px] text-ink">
               <input
                 type="number"
                 min={1}
@@ -459,17 +493,55 @@ function BlockFields({
                 value={Number(p.pctAmount) || 100}
                 onChange={(e) => set("pctAmount", Number(e.target.value))}
               />
-              %
+              <span className="text-[#aaa]">% of portfolio</span>
             </label>
           ) : null}
-        </span>
+        </div>
       );
-    case "sell":
+    }
+    case "sell": {
+      const smode = (p.mode || "all") === "fixed" ? "fixed" : (p.mode || "all") === "pct" ? "pct" : "all";
       return (
-        <select value={p.mode || "all"} onChange={(e) => set("mode", e.target.value)}>
-          <option value="all">Sell all</option>
-        </select>
+        <div className="flex flex-col gap-1.5 text-[12px] text-ink">
+          <label className="flex items-center gap-1 text-[12px] text-ink">
+            <span className="text-[#aaa]">Mode</span>
+            <select
+              className="max-w-[min(100%,11rem)] bg-transparent py-0 text-[12px] leading-tight text-ink"
+              value={smode}
+              onChange={(e) => set("mode", e.target.value)}
+            >
+              <option value="all">Sell all</option>
+              <option value="fixed">Fixed amount</option>
+              <option value="pct">% of portfolio</option>
+            </select>
+          </label>
+          {smode === "fixed" ? (
+            <label className="flex items-center gap-1 text-[12px] text-ink" title="AUD sale proceeds (capped at position value)">
+              <span className="text-[#aaa]">AUD</span>
+              <input
+                type="number"
+                min={0.01}
+                step={0.01}
+                value={Number(p.fixedAmount) || 0.5}
+                onChange={(e) => set("fixedAmount", Number(e.target.value))}
+              />
+            </label>
+          ) : null}
+          {smode === "pct" ? (
+            <label className="flex items-center gap-1 text-[12px] text-ink">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={Number(p.pctAmount) || 50}
+                onChange={(e) => set("pctAmount", Number(e.target.value))}
+              />
+              <span className="text-[#aaa]">% of portfolio</span>
+            </label>
+          ) : null}
+        </div>
       );
+    }
     case "hold":
       return <span className="text-[12px] text-[#aaa]">No trade</span>;
     case "stop_loss":
@@ -1015,61 +1087,60 @@ const StrategyBuilder = forwardRef(function StrategyBuilder(
     </div>
   );
 
-  const paletteEl =
-    mode === "visual" ? (
-      <aside className="block-palette block-palette--backtest" aria-label="Block palette">
-        {PALETTE.map((cat) => (
-          <div key={cat.key}>
-            <button
-              type="button"
-              className="category-header w-full border-0 bg-transparent p-0 text-left"
-              onClick={() => setOpenCats((o) => ({ ...o, [cat.key]: !o[cat.key] }))}
-              aria-expanded={openCats[cat.key]}
-            >
-              <span className="category-dot" style={{ background: cat.dot }} />
-              {cat.label}
-            </button>
-            {openCats[cat.key] ? (
-              <div>
-                {cat.blocks.map((b) => (
-                  <div
-                    key={b.type}
-                    className="palette-block palette-block--row"
-                    style={{ borderLeftColor: cat.dot }}
-                    draggable
-                    onDragStart={(e) => {
-                      const t = e.target;
-                      if (t instanceof Element && t.closest(".glossary-palette-info")) {
-                        e.preventDefault();
-                        return;
-                      }
-                      onPaletteDragStart(e, b.type);
+  const paletteEl = (
+    <aside className="block-palette block-palette--backtest" aria-label="Block palette">
+      {PALETTE.map((cat) => (
+        <div key={cat.key}>
+          <button
+            type="button"
+            className="category-header w-full border-0 bg-transparent p-0 text-left"
+            onClick={() => setOpenCats((o) => ({ ...o, [cat.key]: !o[cat.key] }))}
+            aria-expanded={openCats[cat.key]}
+          >
+            <span className="category-dot" style={{ background: cat.dot }} />
+            {cat.label}
+          </button>
+          {openCats[cat.key] ? (
+            <div>
+              {cat.blocks.map((b) => (
+                <div
+                  key={b.type}
+                  className="palette-block palette-block--row"
+                  style={{ borderLeftColor: cat.dot }}
+                  draggable
+                  onDragStart={(e) => {
+                    const t = e.target;
+                    if (t instanceof Element && t.closest(".glossary-palette-info")) {
+                      e.preventDefault();
+                      return;
+                    }
+                    onPaletteDragStart(e, b.type);
+                  }}
+                  onDragEnd={clearDrag}
+                >
+                  <span className="palette-block-label">{b.label}</span>
+                  <button
+                    type="button"
+                    className="glossary-palette-info"
+                    aria-label={`Open glossary: ${b.label}`}
+                    draggable={false}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setGlossaryType(b.type);
                     }}
-                    onDragEnd={clearDrag}
+                    onPointerDown={(e) => e.stopPropagation()}
                   >
-                    <span className="palette-block-label">{b.label}</span>
-                    <button
-                      type="button"
-                      className="glossary-palette-info"
-                      aria-label={`Open glossary: ${b.label}`}
-                      draggable={false}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setGlossaryType(b.type);
-                      }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      i
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </aside>
-    ) : null;
+                    i
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </aside>
+  );
 
   const visualPanelEl =
     mode === "visual" ? (

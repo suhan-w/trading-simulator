@@ -96,6 +96,18 @@ function GlossaryExampleSvg({ type }) {
           })}
         </svg>
       );
+    case "select_data":
+      return (
+        <svg {...common} className="glossary-example-svg">
+          <rect x="12" y="12" width="96" height="52" rx="6" fill="#fdf8f0" stroke="#c8963e" strokeWidth="2" />
+          <text x="60" y="30" textAnchor="middle" fontSize="11" fill="#111" fontFamily="monospace">
+            CBA.AX
+          </text>
+          <text x="60" y="48" textAnchor="middle" fontSize="8" fill="#666">
+            start → end
+          </text>
+        </svg>
+      );
     case "select_stock":
       return (
         <svg {...common} className="glossary-example-svg">

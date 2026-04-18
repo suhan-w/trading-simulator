@@ -97,7 +97,6 @@ export default function TradePage() {
   const [portfolioData, setPortfolioData] = useState(null);
   const [portfolioErr, setPortfolioErr] = useState(null);
   const [strategyReminder, setStrategyReminder] = useState("");
-  const [paperLbEntryId, setPaperLbEntryId] = useState(null);
   const [paperSharePublic, setPaperSharePublic] = useState(false);
   const [paperShareBusy, setPaperShareBusy] = useState(false);
 
@@ -125,25 +124,45 @@ export default function TradePage() {
     return () => clearInterval(id);
   }, [user, loadPortfolio]);
 
+  useEffect(() => {
+    if (!user) {
+      setPaperSharePublic(false);
+      return undefined;
+    }
+    let cancelled = false;
+    api
+      .leaderboardMine()
+      .then((rows) => {
+        if (cancelled) return;
+        const paper = rows.find((r) => r.source === "paper");
+        if (paper) setPaperSharePublic(Boolean(paper.share_public));
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   const onPaperShareToggle = useCallback(async (next) => {
-    if (paperLbEntryId == null) return;
+    if (paperSharePublic === next) return;
     setPaperShareBusy(true);
     try {
-      await api.patchLeaderboardEntry(paperLbEntryId, { share_public: next });
-      setPaperSharePublic(next);
+      const out = await api.patchPaperLeaderboardSharing({ share_public: next });
+      setPaperSharePublic(Boolean(out.share_public));
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e));
     } finally {
       setPaperShareBusy(false);
     }
-  }, [paperLbEntryId]);
+  }, [paperSharePublic]);
 
-  const onMarketFilled = useCallback((ord) => {
-    const id = ord?.paper_leaderboard_entry_id;
-    if (id != null) {
-      setPaperLbEntryId(id);
-      setPaperSharePublic(false);
-    }
+  const onMarketFilled = useCallback(() => {
+    void api.leaderboardMine().then((rows) => {
+      const paper = rows.find((r) => r.source === "paper");
+      if (paper) setPaperSharePublic(Boolean(paper.share_public));
+    });
   }, []);
 
   const dismissStrategyReminder = useCallback(() => {
@@ -226,12 +245,13 @@ export default function TradePage() {
         </div>
         <div className="min-w-0 flex w-full flex-col gap-3">
           <ExecuteTradeForm onQuoteSymbol={setChartSymbol} onMarketOrderFilled={onMarketFilled} />
-          <ShareLeaderboardBanner
-            entryId={paperLbEntryId}
-            sharePublic={paperSharePublic}
-            onChangeShare={(v) => void onPaperShareToggle(v)}
-            disabled={paperShareBusy}
-          />
+          {user ? (
+            <ShareLeaderboardBanner
+              sharePublic={paperSharePublic}
+              onChangeShare={(v) => void onPaperShareToggle(v)}
+              disabled={paperShareBusy}
+            />
+          ) : null}
         </div>
       </div>
     </div>

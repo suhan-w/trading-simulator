@@ -287,8 +287,7 @@ export default function BacktestingPage() {
                               const blocks =
                                 t.key === "ma"
                                   ? [
-                                      { type: "select_stock" },
-                                      { type: "select_date_range" },
+                                      { type: "select_data" },
                                       { type: "sma", params: { period: 20 } },
                                       { type: "sma", params: { period: 50 } },
                                       { type: "if_cross_above" },
@@ -298,8 +297,7 @@ export default function BacktestingPage() {
                                     ]
                                   : t.key === "rsi"
                                     ? [
-                                        { type: "select_stock" },
-                                        { type: "select_date_range" },
+                                        { type: "select_data" },
                                         { type: "rsi", params: { period: 14 } },
                                         { type: "if_lt", params: { threshold: 30 } },
                                         { type: "buy", params: { mode: "all_cash" } },
@@ -307,8 +305,7 @@ export default function BacktestingPage() {
                                         { type: "sell", params: { mode: "all" } },
                                       ]
                                     : [
-                                        { type: "select_stock" },
-                                        { type: "select_date_range" },
+                                        { type: "select_data" },
                                         { type: "buy", params: { mode: "all_cash" } },
                                         { type: "hold" },
                                       ];

@@ -175,6 +175,43 @@ def refresh_paper_snapshot(db: Session, user: User) -> LeaderboardEntry | None:
     return row
 
 
+def ensure_paper_leaderboard_row(db: Session, user: User) -> LeaderboardEntry:
+    """Create a paper leaderboard row if missing (e.g. zero trades) so privacy can be set from Account."""
+    row = (
+        db.query(LeaderboardEntry)
+        .filter(LeaderboardEntry.user_id == user.id, LeaderboardEntry.source == SOURCE_PAPER)
+        .first()
+    )
+    if row is not None:
+        return row
+    uc = user.created_at
+    start = uc.date() if isinstance(uc, datetime) else date.today()
+    end = date.today()
+    if start > end:
+        start = end
+    seq = next_user_strategy_seq(db, user)
+    row = LeaderboardEntry(
+        user_id=user.id,
+        anon_id=next_anon_id(db),
+        strategy_seq=seq,
+        source=SOURCE_PAPER,
+        ticker=None,
+        period_start=start,
+        period_end=end,
+        total_return_pct=0.0,
+        sharpe_ratio=None,
+        max_drawdown_pct=None,
+        win_rate_pct=None,
+        trade_count=0,
+        share_public=False,
+        strategy_code=None,
+        strategy_visual_json=None,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
 def count_public_distinct_strategies(db: Session, range_start: date, range_end: date) -> int:
     q = public_in_range(db, range_start, range_end)
     return int(q.with_entities(func.count(LeaderboardEntry.id)).scalar() or 0)

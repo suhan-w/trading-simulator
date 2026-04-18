@@ -14,6 +14,7 @@ const CATEGORY_DOT = {
 const TYPE_CAT = {
   select_stock: "data",
   select_date_range: "data",
+  select_data: "data",
   sma: "indicator",
   ema: "indicator",
   rsi: "indicator",
@@ -41,8 +42,7 @@ export function glossaryCategoryDot(type) {
 
 /** @type {string[]} */
 export const GLOSSARY_BLOCK_ORDER = [
-  "select_stock",
-  "select_date_range",
+  "select_data",
   "sma",
   "ema",
   "rsi",
@@ -147,6 +147,20 @@ export const GLOSSARY_ENTRIES = {
     ],
     usedInTemplates: [],
   },
+  select_data: {
+    categoryLabel: "Data",
+    title: "Stock & date range",
+    whatItIs:
+      "Chooses which ticker to load and the calendar window for historical prices in one block. You can type the symbol and dates directly.",
+    howItWorks:
+      "Ticker and dates are stored on the block and appear in generated code comments; the Backtesting page still loads OHLCV for that symbol and range into data[\"price\"].",
+    whenToUse: "Start every visual strategy here — same role as the old separate stock and date blocks, combined.",
+    signals: [
+      "Use Yahoo-format tickers with .AX for Australian listings",
+      "Shorter ranges = fewer bars; wider ranges = more history",
+    ],
+    usedInTemplates: ["Moving Average Crossover", "RSI Overbought/Oversold", "Buy and Hold"],
+  },
   select_stock: {
     categoryLabel: "Data",
     title: "Select Stock",
@@ -158,7 +172,7 @@ export const GLOSSARY_ENTRIES = {
       "Use Yahoo-format tickers with .AX for Australian listings",
       "Changing ticker re-runs the same logic on a different name",
     ],
-    usedInTemplates: ["Moving Average Crossover", "RSI Overbought/Oversold", "Buy and Hold"],
+    usedInTemplates: [],
   },
   select_date_range: {
     categoryLabel: "Data",
@@ -171,7 +185,7 @@ export const GLOSSARY_ENTRIES = {
       "Narrow range = fewer bars, faster runs",
       "Wide range = more trades possible, more compute",
     ],
-    usedInTemplates: ["Moving Average Crossover", "RSI Overbought/Oversold", "Buy and Hold"],
+    usedInTemplates: [],
   },
   if_gt: {
     categoryLabel: "Condition",
@@ -252,10 +266,11 @@ export const GLOSSARY_ENTRIES = {
     categoryLabel: "Action",
     title: "Sell",
     whatItIs:
-      "Flats the position when the preceding condition is true — required to be paired with an IF in the linear builder.",
-    howItWorks: "Sells all shares at the bar’s close when the condition above fires and shares > 0.",
-    whenToUse: "Exits after overbought signals, MA cross down, stop/target via separate risk blocks, etc.",
-    signals: ["Must follow a condition block", "Typically closes the full paper position"],
+      "Reduces or exits the long position when the preceding condition is true — must be paired with an IF in the linear builder.",
+    howItWorks:
+      "Choose Sell all, a fixed AUD amount raised from the sale (capped at position value), or a percentage of current position value. Proceeds add to cash.",
+    whenToUse: "Exits or trims after signals; partial sells keep remaining shares until you sell again.",
+    signals: ["Must follow a condition block", "Sell all closes the position; fixed/% trim partially"],
     usedInTemplates: ["Moving Average Crossover", "RSI Overbought/Oversold"],
   },
   hold: {

@@ -5,7 +5,7 @@
 
 /** @typedef {{ id: string, type: string, params?: Record<string, unknown>}} VisualBlock */
 
-const DATA_TYPES = new Set(["select_stock", "select_date_range"]);
+const DATA_TYPES = new Set(["select_stock", "select_date_range", "select_data"]);
 const INDICATOR_TYPES = new Set(["sma", "ema", "rsi", "bollinger", "macd", "volume"]);
 const CONDITION_TYPES = new Set(["if_gt", "if_lt", "if_cross_above", "if_cross_below", "if_two_indicators_cross"]);
 const RISK_TYPES = new Set(["stop_loss", "take_profit", "max_position"]);
@@ -41,14 +41,15 @@ function emitBuyLines(mode, fixed, pct, indent) {
  *
  * @param {VisualBlock[]} program
  * @param {string[]} errors
- * @returns {{ setup: string[]; rules: { when: string; side: "buy" | "sell"; buyMode?: string; buyFixed?: number; buyPct?: number }[]; bar0Buys: VisualBlock[]; risks: VisualBlock[] }}
+ * @returns {{ setup: string[]; rules: RuleRow[]; bar0Buys: VisualBlock[]; risks: VisualBlock[] }}
  */
+/** @typedef {{ when: string; side: "buy" | "sell"; buyMode?: string; buyFixed?: number; buyPct?: number; sellMode?: string; sellFixed?: number; sellPct?: number }} RuleRow */
 function parseLinearProgram(program, errors) {
   /** @type {string[]} */
   const setup = [];
   /** @type {string[]} */
   const stack = [];
-  /** @type {{ when: string; side: "buy" | "sell"; buyMode?: string; buyFixed?: number; buyPct?: number }[]} */
+  /** @type {RuleRow[]} */
   const rules = [];
   /** @type {VisualBlock[]} */
   const bar0Buys = [];
@@ -199,15 +200,27 @@ function parseLinearProgram(program, errors) {
 
     if (t === "buy" || t === "sell") {
       if (pendingWhen?.ok) {
-        const rawMode = (b.params?.mode || "all_cash").toString();
-        const mode = rawMode === "fixed" ? "fixed" : rawMode === "pct" ? "pct" : "all_cash";
-        rules.push({
-          when: pendingWhen.expr,
-          side: t,
-          buyMode: t === "buy" ? mode : undefined,
-          buyFixed: t === "buy" ? num(b, "fixedAmount", 0.5) : undefined,
-          buyPct: t === "buy" ? num(b, "pctAmount", 100) : undefined,
-        });
+        if (t === "buy") {
+          const rawMode = (b.params?.mode || "all_cash").toString();
+          const mode = rawMode === "fixed" ? "fixed" : rawMode === "pct" ? "pct" : "all_cash";
+          rules.push({
+            when: pendingWhen.expr,
+            side: "buy",
+            buyMode: mode,
+            buyFixed: num(b, "fixedAmount", 0.5),
+            buyPct: num(b, "pctAmount", 100),
+          });
+        } else {
+          const rawSell = (b.params?.mode || "all").toString();
+          const sellMode = rawSell === "fixed" ? "fixed" : rawSell === "pct" ? "pct" : "all";
+          rules.push({
+            when: pendingWhen.expr,
+            side: "sell",
+            sellMode,
+            sellFixed: num(b, "fixedAmount", 0.5),
+            sellPct: num(b, "pctAmount", 100),
+          });
+        }
         pendingWhen = null;
       } else if (pendingWhen && !pendingWhen.ok) {
         errors.push("Fix the IF block above (add indicators before it) before Buy/Sell.");
@@ -350,24 +363,49 @@ function emitRunBody(ticker, start, end, parsed) {
       lines.push(`                trades.append({"date": str(df.index[i])[:10], "side": "buy", "price": pr})`);
       lines.push(`                entry_px = pr`);
     } else {
+      const sm = r.sellMode || "all";
+      const sfx = r.sellFixed ?? 0.5;
+      const spct = r.sellPct ?? 100;
       lines.push(`            if shares > 0:`);
-      lines.push(`                cash = shares * pr`);
-      lines.push(`                trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})`);
-      lines.push(`                shares = 0.0`);
-      lines.push(`                entry_px = None`);
+      if (sm === "all") {
+        lines.push(`                cash += shares * pr`);
+        lines.push(`                trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})`);
+        lines.push(`                shares = 0.0`);
+        lines.push(`                entry_px = None`);
+      } else if (sm === "fixed") {
+        lines.push(`                _pv = shares * pr`);
+        lines.push(`                _sv = min(${sfx}, _pv)`);
+        lines.push(`                _q = _sv / pr`);
+        lines.push(`                cash += _sv`);
+        lines.push(`                shares -= _q`);
+        lines.push(`                trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})`);
+        lines.push(`                if shares <= 1e-12:`);
+        lines.push(`                    shares = 0.0`);
+        lines.push(`                    entry_px = None`);
+      } else {
+        lines.push(`                _pv = shares * pr`);
+        lines.push(`                _sv = _pv * (${spct} / 100.0)`);
+        lines.push(`                _q = _sv / pr`);
+        lines.push(`                cash += _sv`);
+        lines.push(`                shares -= _q`);
+        lines.push(`                trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})`);
+        lines.push(`                if shares <= 1e-12:`);
+        lines.push(`                    shares = 0.0`);
+        lines.push(`                    entry_px = None`);
+      }
     }
   }
 
   if (stopF != null) {
     lines.push(`        if shares > 0 and entry_px is not None and pr <= entry_px * (1.0 - _stop_thr):`);
-    lines.push(`            cash = shares * pr`);
+    lines.push(`            cash += shares * pr`);
     lines.push(`            trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})`);
     lines.push(`            shares = 0.0`);
     lines.push(`            entry_px = None`);
   }
   if (tpF != null) {
     lines.push(`        if shares > 0 and entry_px is not None and pr >= entry_px * (1.0 + _tp_thr):`);
-    lines.push(`            cash = shares * pr`);
+    lines.push(`            cash += shares * pr`);
     lines.push(`            trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})`);
     lines.push(`            shares = 0.0`);
     lines.push(`            entry_px = None`);
@@ -421,10 +459,33 @@ function emitEmptyStrategy(ticker, start, end) {
  * @param {{ ticker: string; start: string; end: string }} ctx
  * @returns {{ code: string; errors: string[] }}
  */
+/** @param {VisualBlock[]} blocks @param {{ ticker: string; start: string; end: string }} ctx */
+function effectiveBacktestRange(blocks, ctx) {
+  let effTicker = (ctx.ticker || "CBA.AX").trim();
+  let effStart = ctx.start || "";
+  let effEnd = ctx.end || "";
+
+  const leading = [];
+  for (const b of blocks) {
+    if (!DATA_TYPES.has(b.type)) break;
+    leading.push(b);
+  }
+  const combo = leading.find((b) => b.type === "select_data");
+  if (combo?.params && typeof combo.params === "object") {
+    const p = /** @type {Record<string, unknown>} */ (combo.params);
+    const tk = p.ticker != null ? String(p.ticker).trim() : "";
+    const st = p.start != null ? String(p.start).trim() : "";
+    const en = p.end != null ? String(p.end).trim() : "";
+    if (tk) effTicker = tk.toUpperCase();
+    if (st) effStart = st.slice(0, 10);
+    if (en) effEnd = en.slice(0, 10);
+  }
+
+  return { ticker: effTicker, start: effStart, end: effEnd };
+}
+
 export function translateVisualBlocksToPythonWithDiagnostics(blocks, { ticker, start, end }) {
-  const t = (ticker || "CBA.AX").trim();
-  const s = start || "";
-  const e = end || "";
+  const { ticker: t, start: s, end: e } = effectiveBacktestRange(blocks, { ticker, start, end });
 
   /** @type {string[]} */
   const errors = [];

@@ -7,8 +7,11 @@ const CAT_COLORS = {
   data: "#c8963e", indicator: "#4a90d9", condition: "#7b68ee",
   action: "#2d8a55", risk: "#c0392b",
 };
+const BLOCK_TITLE = {
+  select_data: "Stock & date range",
+};
 const TYPE_CAT = {
-  select_stock:"data",select_date_range:"data",sma:"indicator",ema:"indicator",
+  select_stock:"data",select_date_range:"data",select_data:"data",sma:"indicator",ema:"indicator",
   rsi:"indicator",bollinger:"indicator",macd:"indicator",volume:"indicator",
   if_gt:"condition",if_lt:"condition",if_cross_above:"condition",if_cross_below:"condition",
   if_two_indicators_cross:"condition",buy:"action",sell:"action",hold:"action",
@@ -190,7 +193,8 @@ export default function NodeGraphCanvas({
                 <span style={{ width:7,height:7,borderRadius:2,background:col,flexShrink:0,display:"block" }} />
                 <span style={{ fontSize:12,fontWeight:500,flex:1,
                   color:"var(--color-text-primary,#111)",lineHeight:1.3 }}>
-                  {block.type.replace(/_/g," ").replace(/\\b\\w/g, l=>l.toUpperCase())}
+                  {BLOCK_TITLE[block.type] ??
+                    block.type.replace(/_/g," ").replace(/\b\w/g, (l) => l.toUpperCase())}
                 </span>
                 <button className="delete-btn"
                   style={{ width:15,height:15,border:"0.5px solid var(--color-border-secondary,rgba(0,0,0,0.2))",

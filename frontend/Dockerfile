@@ -11,6 +11,10 @@ COPY . .
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
+# Optional: pass CACHEBUST=$(date +%s) from docker compose so this layer reruns if COPY was stale.
+ARG CACHEBUST
+RUN echo "cowrie CACHEBUST=${CACHEBUST:-none}" > /dev/null
+
 RUN npm run build
 
 FROM nginx:alpine
