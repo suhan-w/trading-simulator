@@ -1359,6 +1359,11 @@
     box-shadow: 0 24px 48px rgba(17, 17, 17, 0.18);
   }
 
+  /* Chart-only expand: explicit height so body `flex: 1` gives LWC a real container (Strategy code/canvas dialogs omit this modifier). */
+  .backtest-chart-expand-dialog.backtest-chart-expand-dialog--chart {
+    height: min(92vh, 900px);
+  }
+
   .backtest-chart-expand-dialog.backtest-code-expand-dialog {
     width: min(98vw, 110rem);
     max-height: min(94vh, 95rem);
@@ -1434,7 +1439,7 @@
     display: flex;
     box-sizing: border-box;
     min-height: 0;
-    flex-shrink: 0;
+    flex: 1;
     flex-direction: column;
     /* Horizontal inset only — vertical padding would shrink the content box vs `height: Npx` and clip the chart */
     padding: 0 1rem;

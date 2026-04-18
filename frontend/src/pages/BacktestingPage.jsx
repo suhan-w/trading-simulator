@@ -216,22 +216,22 @@ export default function BacktestingPage() {
                 )}
               </div>
 
-              <div className="cs-card overflow-hidden">
+              <div className="cs-card min-w-0 overflow-hidden">
                 <div className="cs-card-header pb-2">
                   <CardHeaderTitle title="Strategy Code" />
                 </div>
-                <div className="border-t border-ink/[0.06] px-4 py-3">
+                <div className="min-w-0 border-t border-ink/[0.06] px-4 py-3">
                   <div className="backtest-code-editor">
                     <CodeMirror value={code} height="280px" extensions={[python()]} onChange={setCode} theme="dark" />
                   </div>
                 </div>
               </div>
 
-              <div className="cs-card overflow-hidden">
+              <div className="cs-card min-w-0 overflow-hidden">
                 <div className="cs-card-header pb-2">
                   <CardHeaderTitle title="Run Backtest" />
                 </div>
-                <div className="border-t border-ink/[0.06] px-4 py-3">
+                <div className="min-w-0 border-t border-ink/[0.06] px-4 py-3">
                   <div className="backtest-run-row">
                     <label className="backtest-run-strip-field">
                       <span className="backtest-run-strip-label">Ticker</span>
@@ -506,7 +506,7 @@ export default function BacktestingPage() {
         ? createPortal(
             <div className="backtest-chart-expand-overlay" role="presentation" onClick={() => setExpandedChart(null)}>
               <div
-                className="backtest-chart-expand-dialog"
+                className="backtest-chart-expand-dialog backtest-chart-expand-dialog--chart"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="backtest-chart-expand-title"
@@ -534,7 +534,7 @@ export default function BacktestingPage() {
                 <div className="backtest-chart-expand-body">
                   {expandedChart === "vs" ? (
                     result?.series?.comparison?.length ? (
-                      <BacktestVsBenchmarkChart comparison={result.series.comparison} height={520} chrome="plot" />
+                      <BacktestVsBenchmarkChart comparison={result.series.comparison} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
                         <span className="lb-gold-sq" aria-hidden />
@@ -544,7 +544,7 @@ export default function BacktestingPage() {
                   ) : null}
                   {expandedChart === "signals" ? (
                     result?.series?.signals?.dates?.length ? (
-                      <BacktestSignalsChart signals={result.series.signals} height={520} chrome="plot" />
+                      <BacktestSignalsChart signals={result.series.signals} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
                         <span className="lb-gold-sq" aria-hidden />
@@ -554,7 +554,7 @@ export default function BacktestingPage() {
                   ) : null}
                   {expandedChart === "drawdown" ? (
                     result?.series?.drawdown?.length ? (
-                      <BacktestDrawdownChart drawdown={result.series.drawdown} height={520} chrome="plot" />
+                      <BacktestDrawdownChart drawdown={result.series.drawdown} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
                         <span className="lb-gold-sq" aria-hidden />
@@ -564,7 +564,7 @@ export default function BacktestingPage() {
                   ) : null}
                   {expandedChart === "daily" ? (
                     result?.series?.daily_returns?.length ? (
-                      <BacktestDailyReturnsChart daily={result.series.daily_returns} height={520} chrome="plot" />
+                      <BacktestDailyReturnsChart daily={result.series.daily_returns} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
                         <span className="lb-gold-sq" aria-hidden />

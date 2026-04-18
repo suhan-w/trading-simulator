@@ -15,8 +15,18 @@ export const BACKTEST_CHART_PLOT_HEIGHT = 220;
 
 /** @typedef {"full" | "plot"} BacktestChartChrome */
 
-/** Expand modal: avoid `height: 100%` on the chart root — parent flex height was not resolving, so the plot mount stayed ~0px while LWC sized to `minH` only (lines clipped / off-canvas). */
-function plotChromeRootStyle(h) {
+/** Plot chrome root: fixed pixel height for grid cells; `fillContainer` for expand modal where `.backtest-chart-expand-dialog` has an explicit height and body is `flex: 1`. */
+function plotChromeRootStyle(h, fillContainer) {
+  if (fillContainer) {
+    return {
+      width: "100%",
+      minHeight: 0,
+      flex: 1,
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+    };
+  }
   return {
     width: "100%",
     height: h,
@@ -42,10 +52,12 @@ const layoutOpts = {
   timeScale: { borderColor: "rgba(17,17,17,0.06)", timeVisible: true, secondsVisible: false },
 };
 
+/** Use the mount element's box when laid out; never force `minH` taller than the container (that clipped LWC vs legend/footer). */
 function chartSize(el, minH) {
-  const w = Math.floor(el.clientWidth);
-  const h = Math.max(minH, Math.floor(el.clientHeight || minH));
-  return { width: Math.max(w, 0), height: Math.max(h, minH) };
+  const w = Math.max(0, Math.floor(el.clientWidth));
+  const raw = Math.floor(el.clientHeight);
+  const h = raw > 2 ? raw : minH;
+  return { width: w, height: h };
 }
 
 /** @param {{ children?: import("react").ReactNode }} props */
@@ -53,11 +65,12 @@ function BacktestChartFooter({ children }) {
   return <div className="backtest-chart-footer">{children ?? null}</div>;
 }
 
-/** @param {{ comparison: { date: string, strategy: number, benchmark: number }[], height?: number, chrome?: BacktestChartChrome }} props */
+/** @param {{ comparison: { date: string, strategy: number, benchmark: number }[], height?: number, chrome?: BacktestChartChrome, fillContainer?: boolean }} props */
 export function BacktestVsBenchmarkChart({
   comparison,
   height = BACKTEST_CHART_PLOT_HEIGHT,
   chrome = "full",
+  fillContainer = false,
 }) {
   const ref = useRef(null);
   const plot = chrome === "plot";
@@ -86,7 +99,7 @@ export function BacktestVsBenchmarkChart({
   return (
     <Root
       className={plot ? "flex min-h-0 flex-col" : "backtest-chart-card"}
-      style={plot ? plotChromeRootStyle(height) : undefined}
+      style={plot ? plotChromeRootStyle(height, fillContainer) : undefined}
     >
       {!plot ? (
         <div className="cs-card-header pb-2">
@@ -108,11 +121,12 @@ export function BacktestVsBenchmarkChart({
   );
 }
 
-/** @param {{ daily: { date: string, return: number }[], height?: number, chrome?: BacktestChartChrome }} props */
+/** @param {{ daily: { date: string, return: number }[], height?: number, chrome?: BacktestChartChrome, fillContainer?: boolean }} props */
 export function BacktestDailyReturnsChart({
   daily,
   height = BACKTEST_CHART_PLOT_HEIGHT,
   chrome = "full",
+  fillContainer = false,
 }) {
   const ref = useRef(null);
   const plot = chrome === "plot";
@@ -147,7 +161,7 @@ export function BacktestDailyReturnsChart({
   return (
     <Root
       className={plot ? "flex min-h-0 flex-col" : "backtest-chart-card"}
-      style={plot ? plotChromeRootStyle(height) : undefined}
+      style={plot ? plotChromeRootStyle(height, fillContainer) : undefined}
     >
       {!plot ? (
         <div className="cs-card-header pb-2">
@@ -166,11 +180,12 @@ export function BacktestDailyReturnsChart({
   );
 }
 
-/** @param {{ drawdown: { date: string, drawdown_pct: number }[], height?: number, chrome?: BacktestChartChrome }} props */
+/** @param {{ drawdown: { date: string, drawdown_pct: number }[], height?: number, chrome?: BacktestChartChrome, fillContainer?: boolean }} props */
 export function BacktestDrawdownChart({
   drawdown,
   height = BACKTEST_CHART_PLOT_HEIGHT,
   chrome = "full",
+  fillContainer = false,
 }) {
   const ref = useRef(null);
   const plot = chrome === "plot";
@@ -202,7 +217,7 @@ export function BacktestDrawdownChart({
   return (
     <Root
       className={plot ? "flex min-h-0 flex-col" : "backtest-chart-card"}
-      style={plot ? plotChromeRootStyle(height) : undefined}
+      style={plot ? plotChromeRootStyle(height, fillContainer) : undefined}
     >
       {!plot ? (
         <div className="cs-card-header pb-2">
@@ -221,11 +236,12 @@ export function BacktestDrawdownChart({
   );
 }
 
-/** @param {{ signals: { dates: string[], close: number[], markers: { date: string, side: string, price: number }[] }, height?: number, chrome?: BacktestChartChrome }} props */
+/** @param {{ signals: { dates: string[], close: number[], markers: { date: string, side: string, price: number }[] }, height?: number, chrome?: BacktestChartChrome, fillContainer?: boolean }} props */
 export function BacktestSignalsChart({
   signals,
   height = BACKTEST_CHART_PLOT_HEIGHT,
   chrome = "full",
+  fillContainer = false,
 }) {
   const ref = useRef(null);
   const plot = chrome === "plot";
@@ -265,7 +281,7 @@ export function BacktestSignalsChart({
   return (
     <Root
       className={plot ? "flex min-h-0 flex-col" : "backtest-chart-card"}
-      style={plot ? plotChromeRootStyle(height) : undefined}
+      style={plot ? plotChromeRootStyle(height, fillContainer) : undefined}
     >
       {!plot ? (
         <div className="cs-card-header pb-2">
