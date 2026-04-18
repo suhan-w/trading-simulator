@@ -431,6 +431,41 @@ class LeaderboardBundleOut(BaseModel):
     categories: list[LeaderboardCategoryOut]
 
 
+class CommunityPaperRowOut(BaseModel):
+    rank: int
+    trader_label: str
+    member_since: str
+    total_trades: int
+    total_return_pct: float
+    sharpe_ratio: Optional[float] = None
+    win_rate_pct: Optional[float] = None
+    avg_hold_time_label: str
+    is_mine: bool
+
+
+class CommunityPaperStatsOut(BaseModel):
+    participant_count: int
+    average_return_pct: Optional[float] = None
+    top_return_pct: Optional[float] = None
+
+
+class CommunityPaperYouOut(BaseModel):
+    eligible: bool
+    banner_kind: str  # ok | opt_out | insufficient_trades | no_paper
+    rank: Optional[int] = None
+    total_return_pct: Optional[float] = None
+
+
+class CommunityPaperBundleOut(BaseModel):
+    window: str
+    range_start: date
+    range_end: date
+    since_label: str
+    stats: CommunityPaperStatsOut
+    you: CommunityPaperYouOut
+    rows: list[CommunityPaperRowOut]
+
+
 class LeaderboardEntryPatchIn(BaseModel):
     share_public: bool
 

@@ -7,6 +7,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import LeaderboardEntry, User
 from app.schemas import (
+    CommunityPaperBundleOut,
     LeaderboardBestRankOut,
     LeaderboardBundleOut,
     LeaderboardCategoryOut,
@@ -108,6 +109,22 @@ def leaderboard_bundle(
         best_rank=best,
         categories=categories,
     )
+
+
+_ALLOWED_COMMUNITY_WINDOWS = {"all", "90d", "30d"}
+
+
+@router.get("/community", response_model=CommunityPaperBundleOut)
+def community_paper_leaderboard(
+    window: str = Query("all", description="Ranking window: all | 90d | 30d"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    w = (window or "all").strip().lower()
+    if w not in _ALLOWED_COMMUNITY_WINDOWS:
+        raise HTTPException(status_code=400, detail="window must be one of: all, 90d, 30d")
+    raw = leaderboard_service.community_paper_bundle(db, user, w)
+    return CommunityPaperBundleOut(**raw)
 
 
 @router.get("/mine", response_model=list[LeaderboardEntryMineOut])

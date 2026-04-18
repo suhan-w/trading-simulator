@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+import hashlib
 import secrets
 from typing import Any
 
@@ -328,3 +329,138 @@ def entry_owned(db: Session, entry_id: int, user_id: int) -> LeaderboardEntry | 
         .filter(LeaderboardEntry.id == entry_id, LeaderboardEntry.user_id == user_id)
         .first()
     )
+
+
+MIN_COMMUNITY_TRADES = 10
+
+
+def _range_overlap(a0: date, a1: date, b0: date, b1: date) -> bool:
+    return a1 >= b0 and a0 <= b1
+
+
+def _community_window_range(window: str) -> tuple[date, date, str]:
+    """Returns (range_start, range_end, since_label_for_banner)."""
+    today = date.today()
+    w = (window or "all").strip().lower()
+    if w in ("30d", "30", "30days"):
+        start = today - timedelta(days=30)
+        return start, today, "the last 30 days"
+    if w in ("90d", "90", "90days"):
+        start = today - timedelta(days=90)
+        return start, today, "the last 90 days"
+    start = date(2025, 1, 1)
+    return start, today, "Jan 2025"
+
+
+def _trader_label(user: User | None) -> str:
+    au = (user.anon_user_id or "").strip() if user else ""
+    if not au:
+        return "Trader #---"
+    h = int(hashlib.sha256(au.encode()).hexdigest()[:8], 16)
+    return f"Trader #{h % 998 + 1:03d}"
+
+
+def _member_since_label(user: User | None) -> str:
+    if user is None or user.created_at is None:
+        return "—"
+    uc = user.created_at
+    if isinstance(uc, datetime):
+        d0 = uc.date()
+    else:
+        d0 = uc
+    return d0.strftime("%b %Y")
+
+
+def public_paper_qualified_in_range(db: Session, range_start: date, range_end: date):
+    """Public paper snapshots with enough trades, overlapping the filter window."""
+    return _overlap(
+        db.query(LeaderboardEntry).filter(
+            LeaderboardEntry.source == SOURCE_PAPER,
+            LeaderboardEntry.share_public.is_(True),
+            LeaderboardEntry.trade_count >= MIN_COMMUNITY_TRADES,
+        ),
+        range_start,
+        range_end,
+    )
+
+
+def community_paper_bundle(db: Session, user: User, window: str) -> dict[str, Any]:
+    range_start, range_end, since_label = _community_window_range(window)
+    qual = public_paper_qualified_in_range(db, range_start, range_end)
+    all_rows: list[LeaderboardEntry] = qual.order_by(
+        LeaderboardEntry.total_return_pct.desc(), LeaderboardEntry.id.asc()
+    ).all()
+    n = len(all_rows)
+    rets = [float(e.total_return_pct) for e in all_rows]
+    avg = sum(rets) / n if n else None
+    top = max(rets) if rets else None
+
+    top10 = all_rows[:10]
+    user_ids = {e.user_id for e in top10}
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+    rows: list[dict[str, Any]] = []
+    for i, e in enumerate(top10, start=1):
+        u = users.get(e.user_id)
+        rows.append(
+            {
+                "rank": i,
+                "trader_label": _trader_label(u),
+                "member_since": _member_since_label(u),
+                "total_trades": int(e.trade_count),
+                "total_return_pct": float(e.total_return_pct),
+                "sharpe_ratio": float(e.sharpe_ratio) if e.sharpe_ratio is not None else None,
+                "win_rate_pct": float(e.win_rate_pct) if e.win_rate_pct is not None else None,
+                "avg_hold_time_label": "—",
+                "is_mine": e.user_id == user.id,
+            }
+        )
+
+    mine = (
+        db.query(LeaderboardEntry)
+        .filter(LeaderboardEntry.user_id == user.id, LeaderboardEntry.source == SOURCE_PAPER)
+        .first()
+    )
+
+    banner_kind = "no_paper"
+    rank_out: int | None = None
+    ret_out: float | None = None
+    eligible = False
+
+    if mine is None:
+        banner_kind = "no_paper"
+    elif not mine.share_public:
+        banner_kind = "opt_out"
+    elif int(mine.trade_count or 0) < MIN_COMMUNITY_TRADES:
+        banner_kind = "insufficient_trades"
+    elif not _range_overlap(mine.period_start, mine.period_end, range_start, range_end):
+        banner_kind = "no_overlap"
+    else:
+        banner_kind = "ok"
+        eligible = True
+        better = (
+            public_paper_qualified_in_range(db, range_start, range_end)
+            .filter(LeaderboardEntry.total_return_pct > float(mine.total_return_pct) + 1e-12)
+            .count()
+        )
+        rank_out = int(better) + 1
+        ret_out = float(mine.total_return_pct)
+
+    return {
+        "window": (window or "all").strip().lower(),
+        "range_start": range_start,
+        "range_end": range_end,
+        "since_label": since_label,
+        "stats": {
+            "participant_count": n,
+            "average_return_pct": avg,
+            "top_return_pct": top,
+        },
+        "you": {
+            "eligible": eligible,
+            "banner_kind": banner_kind,
+            "rank": rank_out,
+            "total_return_pct": ret_out,
+        },
+        "rows": rows,
+    }
