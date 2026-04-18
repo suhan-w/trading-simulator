@@ -111,6 +111,50 @@ class AvDailyUsage(Base):
     request_count = Column(Integer, nullable=False, default=0)
 
 
+class MonthlySeasonMeta(Base):
+    """Tracks which calendar month baselines are active (single row id=1)."""
+
+    __tablename__ = "monthly_season_meta"
+
+    id = Column(Integer, primary_key=True, default=1)
+    active_year = Column(Integer, nullable=False)
+    active_month = Column(Integer, nullable=False)
+
+
+class MonthlySeasonBaseline(Base):
+    """Portfolio equity snapshot at the start of a calendar month season."""
+
+    __tablename__ = "monthly_season_baselines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    season_year = Column(Integer, nullable=False)
+    season_month = Column(Integer, nullable=False)
+    baseline_equity = Column(Float, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "season_year", "season_month", name="uq_monthly_baseline_user_season"),
+    )
+
+
+class MonthlyHallOfFame(Base):
+    """Winner of a completed calendar month season."""
+
+    __tablename__ = "monthly_hall_of_fame"
+
+    id = Column(Integer, primary_key=True, index=True)
+    season_year = Column(Integer, nullable=False, index=True)
+    season_month = Column(Integer, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    return_pct = Column(Float, nullable=False)
+    trade_count = Column(Integer, nullable=False, default=0)
+    sharpe_ratio = Column(Float, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("season_year", "season_month", name="uq_hof_one_winner_per_month"),
+    )
+
+
 class LeaderboardEntry(Base):
     """Anonymous strategy performance row; usernames never exposed via API."""
 

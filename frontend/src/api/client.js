@@ -127,8 +127,10 @@ export const api = {
     request(
       `/api/leaderboard?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
     ),
-  leaderboardCommunityPaper: (windowKey = "all") =>
-    request(`/api/leaderboard/community?window=${encodeURIComponent(windowKey)}`),
+  leaderboardCommunityMonthly: () => request("/api/leaderboard/community/monthly"),
+  leaderboardCommunityHallOfFame: () => request("/api/leaderboard/community/hall-of-fame"),
+  leaderboardCommunityAlltime: (windowKey = "all") =>
+    request(`/api/leaderboard/community/alltime?window=${encodeURIComponent(windowKey)}`),
   leaderboardMine: () => request("/api/leaderboard/mine"),
   leaderboardEntry: (id) => request(`/api/leaderboard/entries/${encodeURIComponent(id)}`),
   patchLeaderboardEntry: (id, body) =>

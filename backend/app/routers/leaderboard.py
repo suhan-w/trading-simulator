@@ -8,6 +8,7 @@ from app.deps import get_current_user
 from app.models import LeaderboardEntry, User
 from app.schemas import (
     CommunityPaperBundleOut,
+    HallOfFameOut,
     LeaderboardBestRankOut,
     LeaderboardBundleOut,
     LeaderboardCategoryOut,
@@ -15,8 +16,9 @@ from app.schemas import (
     LeaderboardEntryMineOut,
     LeaderboardEntryPatchIn,
     LeaderboardRowOut,
+    MonthlySeasonBundleOut,
 )
-from app.services import leaderboard_service
+from app.services import community_season_service, leaderboard_service
 
 router = APIRouter(prefix="/api/leaderboard", tags=["leaderboard"])
 
@@ -114,8 +116,27 @@ def leaderboard_bundle(
 _ALLOWED_COMMUNITY_WINDOWS = {"all", "90d", "30d"}
 
 
-@router.get("/community", response_model=CommunityPaperBundleOut)
-def community_paper_leaderboard(
+@router.get("/community/monthly", response_model=MonthlySeasonBundleOut)
+def community_monthly_season(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    raw = community_season_service.monthly_season_bundle(db, user)
+    return MonthlySeasonBundleOut(**raw)
+
+
+@router.get("/community/hall-of-fame", response_model=HallOfFameOut)
+def community_hall_of_fame(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _ = user
+    raw = community_season_service.hall_of_fame_bundle(db)
+    return HallOfFameOut(**raw)
+
+
+@router.get("/community/alltime", response_model=CommunityPaperBundleOut)
+def community_alltime_leaderboard(
     window: str = Query("all", description="Ranking window: all | 90d | 30d"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),

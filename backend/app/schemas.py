@@ -451,7 +451,7 @@ class CommunityPaperStatsOut(BaseModel):
 
 class CommunityPaperYouOut(BaseModel):
     eligible: bool
-    banner_kind: str  # ok | opt_out | insufficient_trades | no_paper
+    banner_kind: str  # ok | opt_out | insufficient_trades | no_paper | no_overlap
     rank: Optional[int] = None
     total_return_pct: Optional[float] = None
 
@@ -464,6 +464,42 @@ class CommunityPaperBundleOut(BaseModel):
     stats: CommunityPaperStatsOut
     you: CommunityPaperYouOut
     rows: list[CommunityPaperRowOut]
+
+
+class MonthlySeasonRowOut(BaseModel):
+    rank: int
+    trader_label: str
+    trades_this_month: int
+    monthly_return_pct: float
+    sharpe_ratio: Optional[float] = None
+    win_rate_pct: Optional[float] = None
+    is_mine: bool
+
+
+class MonthlySeasonYouOut(BaseModel):
+    banner_kind: str
+    eligible: bool
+    rank: Optional[int] = None
+    monthly_return_pct: Optional[float] = None
+    trades_this_month: int
+    min_trades: int
+
+
+class MonthlySeasonBundleOut(BaseModel):
+    season_title: str
+    season_month_label: str
+    closes_at: str
+    you: MonthlySeasonYouOut
+    rows: list[MonthlySeasonRowOut]
+
+
+class HallOfFameOut(BaseModel):
+    has_winner: bool
+    trader_label: Optional[str] = None
+    month_label: Optional[str] = None
+    return_pct: Optional[float] = None
+    trade_count: Optional[int] = None
+    sharpe_ratio: Optional[float] = None
 
 
 class LeaderboardEntryPatchIn(BaseModel):
