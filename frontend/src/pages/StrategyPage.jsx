@@ -7,7 +7,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import SectionHeading from "../components/SectionHeading";
 import { EXAMPLE_MA_CROSSOVER } from "../data/exampleStrategies";
 import StrategyBuilder from "../components/StrategyBuilder";
-import NodeGraphCanvas from "../components/NodeGraphCanvas";
+import PlainEnglishBar, { toPlainEnglishAdvanced, toPlainEnglishSimple } from "../components/strategyBuilder/PlainEnglishBar";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
 import { loadVisualStrategies, saveVisualStrategies, VISUAL_SAVED_STRATEGIES_MAX } from "../constants/visualStrategyStorage";
 
@@ -34,7 +34,7 @@ export default function StrategyPage() {
   const [code, setCode] = useState(EXAMPLE_MA_CROSSOVER);
   const [codeImportVersion, setCodeImportVersion] = useState(0);
   const strategyBuilderRef = useRef(null);
-  const [visualImport, setVisualImport] = useState(null);
+  // Legacy: visual block import is no longer supported in the rule builder.
   const [basketOpen, setBasketOpen] = useState(true);
   const [savedStrategies, setSavedStrategies] = useState(() => loadVisualStrategies());
   const [activeStrategyName, setActiveStrategyName] = useState("Untitled strategy");
@@ -53,9 +53,7 @@ export default function StrategyPage() {
       if (!raw) return;
       sessionStorage.removeItem(STRATEGY_LOAD_PAYLOAD_KEY);
       const p = JSON.parse(raw);
-      if (p?.visualBlocks && Array.isArray(p.visualBlocks) && p.visualBlocks.length > 0) {
-        setVisualImport({ version: Date.now(), blocks: p.visualBlocks });
-      } else if (typeof p?.code === "string" && p.code.trim()) {
+      if (typeof p?.code === "string" && p.code.trim()) {
         setCode(p.code);
         setCodeImportVersion((v) => v + 1);
       }
@@ -79,13 +77,14 @@ export default function StrategyPage() {
 
   const saveCurrentStrategy = useCallback(() => {
     const builder = strategyBuilderRef.current;
-    if (!builder?.getCanvasBlocks) {
+    if (!builder?.getBuilderMode) {
       window.alert("Strategy builder not ready.");
       return;
     }
-    const blocks = builder.getCanvasBlocks();
-    if (!Array.isArray(blocks) || blocks.length === 0) {
-      window.alert("Add blocks to the canvas before saving.");
+    const mode = builder.getBuilderMode();
+    const rules = mode === "advanced" ? builder.getAdvancedRules?.() : builder.getSimpleRules?.();
+    if (!Array.isArray(rules) || rules.length === 0) {
+      window.alert("Add at least one rule before saving.");
       return;
     }
     if (savedStrategies.length >= VISUAL_SAVED_STRATEGIES_MAX) {
@@ -99,7 +98,10 @@ export default function StrategyPage() {
     if (!trimmed) return;
     const id =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `vs-${Date.now()}`;
-    const next = [...savedStrategies, { id, title: trimmed, blocks, savedAt: new Date().toISOString() }];
+    const next = [
+      ...savedStrategies,
+      { id, title: trimmed, blocks: [], savedAt: new Date().toISOString(), builderMode: mode, rules },
+    ];
     setSavedStrategies(next);
     saveVisualStrategies(next);
     setActiveStrategyName(trimmed);
@@ -119,8 +121,9 @@ export default function StrategyPage() {
 
   const loadSavedStrategy = useCallback((item) => {
     const builder = strategyBuilderRef.current;
-    if (!builder?.importCanvasBlocks) return;
-    builder.importCanvasBlocks(item.blocks);
+    if (!builder?.importSimpleRules || !builder?.importAdvancedRules) return;
+    if (item?.builderMode === "advanced") builder.importAdvancedRules(item?.rules || []);
+    else builder.importSimpleRules(item?.rules || []);
     setActiveStrategyName(item.title);
     setBasketOpen(false);
   }, []);
@@ -170,12 +173,13 @@ export default function StrategyPage() {
         onRun={() => {}}
         loading={false}
         onRunAvailabilityChange={() => {}}
-        visualImport={visualImport}
+        // visualImport no longer used by the rule builder
         onExpandEditor={() => setEditorExpanded(true)}
         onExpandCanvas={() => {
           const b = strategyBuilderRef.current;
-          const gs = b?.getGraphState ? b.getGraphState() : null;
-          setExpandedGraph(gs);
+          const mode = b?.getBuilderMode ? b.getBuilderMode() : "simple";
+          const rules = mode === "advanced" ? b?.getAdvancedRules?.() : b?.getSimpleRules?.();
+          setExpandedGraph({ mode, rules });
           setCanvasExpanded(true);
         }}
         hideDataConfigFields
@@ -197,10 +201,7 @@ export default function StrategyPage() {
                   aria-controls="strategy-basket-panel"
                   id="strategy-basket-toggle"
                 >
-                  <span className="grid grid-cols-[auto_1fr] items-center gap-2">
-                    <span className="h-2 w-2 shrink-0 rounded-[1px] bg-gold shadow-card-sm" aria-hidden />
-                    <span className="text-sm font-semibold text-ink">Strategy Basket</span>
-                  </span>
+                  <span className="text-sm font-semibold text-ink">Strategy Basket</span>
                   <span className="font-mono text-sm font-medium text-muted" aria-hidden>
                     {basketOpen ? "−" : "+"}
                   </span>
@@ -308,7 +309,10 @@ export default function StrategyPage() {
                     height="min(82vh, 820px)"
                     theme="none"
                     extensions={extensions}
-                    onChange={setCode}
+                    onChange={(v) => {
+                      setCode(v);
+                      strategyBuilderRef.current?.markCodeDirty?.();
+                    }}
                     basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
                     className="overflow-hidden rounded-lg border border-ink/[0.08] text-left shadow-card-sm"
                   />
@@ -356,22 +360,15 @@ export default function StrategyPage() {
                       overflow: "hidden",
                     }}
                   >
-                    <NodeGraphCanvas
-                      blocks={expandedGraph?.blocks || []}
-                      edges={expandedGraph?.edges || []}
-                      connectors={expandedGraph?.connectors || []}
-                      wiringFrom={null}
-                      mousePos={{ x: 0, y: 0 }}
-                      onBlockPointerDown={() => {}}
-                      onPortPointerDown={() => {}}
-                      onPortPointerUp={() => {}}
-                      onEdgeDelete={() => {}}
-                      onConnectorDelete={() => {}}
-                      onConnectorDragStart={() => {}}
-                      BlockFieldsComponent={null}
-                      onBlockDelete={() => {}}
-                      onBlockParamChange={() => {}}
-                    />
+                    <div style={{ padding: 14 }}>
+                      <PlainEnglishBar
+                        sentences={
+                          expandedGraph?.mode === "advanced"
+                            ? toPlainEnglishAdvanced(expandedGraph?.rules || [])
+                            : toPlainEnglishSimple(expandedGraph?.rules || [])
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

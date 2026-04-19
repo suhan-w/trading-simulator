@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { listBacktestRunsInRange } from "../constants/backtestRunHistoryStorage";
+import { dedupeBacktestRuns, listBacktestRunsInRange } from "../constants/backtestRunHistoryStorage";
 import CardHeaderTitle from "../components/CardHeaderTitle";
 import SectionHeading from "../components/SectionHeading";
 import TradingPerformanceReportModal from "../components/TradingPerformanceReportModal";
@@ -94,7 +94,10 @@ export default function PerformanceReport() {
   const { user } = useAuth();
 
   const username = user?.email || user?.username || "Guest";
-  const backtestRuns = useMemo(() => listBacktestRunsInRange(start, end), [start, end]);
+  const backtestRuns = useMemo(
+    () => dedupeBacktestRuns(listBacktestRunsInRange(start, end)),
+    [start, end]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -298,8 +301,13 @@ export default function PerformanceReport() {
                 subtitle="Each bar is one day’s percentage change in portfolio value."
                 tooltipText="Histogram of daily portfolio return %."
               >
-                <div className="perf-chart-area">
-                  <DailyReturnHistogram embedded rows={report.daily_return_bars || []} height={CHART_H} />
+                <div className="perf-chart-area perf-chart-area-fill">
+                  <DailyReturnHistogram
+                    embedded
+                    fillHeight
+                    rows={report.daily_return_bars || []}
+                    height={CHART_H}
+                  />
                 </div>
               </PerfChartCard>
             </div>

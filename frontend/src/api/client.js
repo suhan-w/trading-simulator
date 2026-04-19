@@ -135,6 +135,9 @@ export const api = {
   leaderboardEntry: (id) => request(`/api/leaderboard/entries/${encodeURIComponent(id)}`),
   patchLeaderboardEntry: (id, body) =>
     request(`/api/leaderboard/entries/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  /** Creates paper row if needed (e.g. before first trade), then sets share_public. */
+  patchPaperLeaderboardSharing: (body) =>
+    request("/api/leaderboard/mine/paper-sharing", { method: "PATCH", body }),
 };
 
 /** After a market order, paper snapshot is refreshed in a background task; poll until the row exists. */
