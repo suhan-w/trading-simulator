@@ -40,19 +40,9 @@ export default function ResetSessionModal({ open, onClose, onConfirm, busy = fal
       >
         <h2
           id="reset-session-title"
-          className="m-0 flex items-center gap-2 font-medium leading-tight tracking-tight"
+          className="m-0 font-medium leading-tight tracking-tight"
           style={{ fontSize: "18px", fontWeight: 500, color: "#111111" }}
         >
-          <span
-            className="shrink-0"
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "1px",
-              backgroundColor: "#c8963e",
-            }}
-            aria-hidden
-          />
           New Session
         </h2>
         <p

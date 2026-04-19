@@ -8,16 +8,6 @@ import ResetSessionModal from "../components/ResetSessionModal";
 const ACCOUNT_PAGE_TOOLTIP =
   "Manage your Alpha Vantage API key, private or public leaderboard visibility for paper trading, and session. ASX closing prices use your key’s daily quota.";
 
-function goldTitleMarker() {
-  return (
-    <span
-      className="h-[8px] w-[8px] shrink-0 rounded-[1px]"
-      style={{ backgroundColor: "#c8963e" }}
-      aria-hidden
-    />
-  );
-}
-
 function displayUsername(email, isGuest) {
   if (!email) return "—";
   if (isGuest) return "Guest";
@@ -292,9 +282,9 @@ export default function Account() {
           <h2 className="text-sm font-semibold text-ink">Private or public account</h2>
           <p className="text-sm leading-relaxed text-muted">
             Choose whether your <strong className="font-semibold text-ink">paper trading</strong> row can appear on
-            community leaderboards. You are always anonymous (no username). The same choice is available on{" "}
-            <Link to="/trade" className="font-semibold text-gold underline-offset-2 hover:underline">
-              Trade
+            community leaderboards. You are always anonymous (no username). The same quick toggle is on{" "}
+            <Link to="/backtesting" className="font-semibold text-gold underline-offset-2 hover:underline">
+              Backtesting
             </Link>
             .
           </p>
@@ -306,7 +296,7 @@ export default function Account() {
             <>
               <p className="text-xs leading-relaxed text-muted">
                 You can switch anytime. If you have not traded yet, a paper leaderboard row is created when you save your
-                choice so your preference is remembered.
+                choice so your preference is remembered. You can also use the toggle on the Backtesting page.
               </p>
               <fieldset
                 className="account-lb-fieldset"
@@ -355,10 +345,7 @@ export default function Account() {
         >
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:items-center">
             <div className="min-w-0">
-              <div className="mb-2 flex items-center gap-2">
-                {goldTitleMarker()}
-                <h2 className="text-sm font-semibold text-ink">New Session</h2>
-              </div>
+              <h2 className="mb-2 text-sm font-semibold text-ink">New Session</h2>
               <p className="text-sm leading-relaxed text-muted">
                 Clear all trades, holdings, and performance history and reset cash to {formatAud(startingCapital)}. Your
                 sign-in and API key are unchanged. This cannot be undone.

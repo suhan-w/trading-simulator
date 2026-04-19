@@ -7,7 +7,7 @@ import {
 } from "../constants/strategyPaletteGlossary";
 
 /** @param {{ type: string }} props */
-function GlossaryExampleSvg({ type }) {
+export function GlossaryExampleSvg({ type }) {
   const common = { width: 120, height: 64, viewBox: "0 0 120 64", "aria-hidden": true };
   switch (type) {
     case "sma":

@@ -10,6 +10,34 @@ const INDICATOR_TYPES = new Set(["sma", "ema", "rsi", "bollinger", "macd", "volu
 const CONDITION_TYPES = new Set(["if_gt", "if_lt", "if_cross_above", "if_cross_below", "if_two_indicators_cross"]);
 const RISK_TYPES = new Set(["stop_loss", "take_profit", "max_position"]);
 
+/** User-facing names (match Strategy palette where possible). */
+const BLOCK_LABELS = {
+  select_stock: "Select stock",
+  select_date_range: "Select date range",
+  select_data: "Select data",
+  sma: "SMA",
+  ema: "EMA",
+  rsi: "RSI",
+  bollinger: "Bollinger",
+  macd: "MACD",
+  volume: "Volume",
+  if_gt: "IF greater than",
+  if_lt: "IF less than",
+  if_cross_above: "IF crosses above",
+  if_cross_below: "IF crosses below",
+  if_two_indicators_cross: "IF two indicators cross",
+  buy: "Buy",
+  sell: "Sell",
+  hold: "Hold",
+  stop_loss: "Stop loss",
+  take_profit: "Take profit",
+  max_position: "Max position",
+};
+
+function blockLabel(type) {
+  return BLOCK_LABELS[type] || type;
+}
+
 function num(b, key, fallback) {
   const v = Number(b?.params?.[key]);
   return Number.isFinite(v) ? v : fallback;
@@ -36,7 +64,7 @@ function emitBuyLines(mode, fixed, pct, indent) {
 }
 
 /**
- * Linear semantics: indicators stack in order; each IF uses the last 1 (threshold) or 2 (cross) series;
+ * Linear semantics: each IF references indicator block ids (dropdowns); indicators emit series in program order;
  * IF must be immediately followed by Buy/Sell; Buy without a preceding IF buys once at bar 0; risk blocks apply every bar after signals.
  *
  * @param {VisualBlock[]} program
@@ -47,8 +75,9 @@ function emitBuyLines(mode, fixed, pct, indent) {
 function parseLinearProgram(program, errors) {
   /** @type {string[]} */
   const setup = [];
-  /** @type {string[]} */
-  const stack = [];
+  /** Block id → pandas series variable name emitted in setup (MACD uses its line series). */
+  /** @type {Map<string, string>} */
+  const indicatorSeriesByBlockId = new Map();
   /** @type {RuleRow[]} */
   const rules = [];
   /** @type {VisualBlock[]} */
@@ -62,28 +91,20 @@ function parseLinearProgram(program, errors) {
   /** @type {null | { ok: true; expr: string } | { ok: false }} */
   let pendingWhen = null;
 
-  const needStack = (n, ctx) => {
-    if (stack.length < n) {
-      errors.push(`${ctx}: need at least ${n} indicator(s) before this block — add indicators above.`);
-      return false;
-    }
-    return true;
-  };
-
   const pushIndicator = (b) => {
     const t = b.type;
     if (t === "sma") {
       const p = Math.max(1, Math.round(num(b, "period", 20)));
       const v = nextName("sma");
       setup.push(`    ${v} = c.rolling(${p}).mean()`);
-      stack.push(v);
+      indicatorSeriesByBlockId.set(b.id, v);
       return;
     }
     if (t === "ema") {
       const p = Math.max(1, Math.round(num(b, "period", 12)));
       const v = nextName("ema");
       setup.push(`    ${v} = c.ewm(span=${p}, adjust=False).mean()`);
-      stack.push(v);
+      indicatorSeriesByBlockId.set(b.id, v);
       return;
     }
     if (t === "rsi") {
@@ -96,7 +117,7 @@ function parseLinearProgram(program, errors) {
       setup.push(`    ${v}_avg_l = ${v}_loss.rolling(${p}).mean()`);
       setup.push(`    ${v}_rs = ${v}_avg_g / ${v}_avg_l.replace(0.0, 1e-12)`);
       setup.push(`    ${v} = 100.0 - (100.0 / (1.0 + ${v}_rs))`);
-      stack.push(v);
+      indicatorSeriesByBlockId.set(b.id, v);
       return;
     }
     if (t === "bollinger") {
@@ -109,7 +130,7 @@ function parseLinearProgram(program, errors) {
       setup.push(`    ${sd} = c.rolling(${p}).std()`);
       setup.push(`    ${up} = ${mid} + 2.0 * ${sd}`);
       setup.push(`    ${lo} = ${mid} - 2.0 * ${sd}`);
-      stack.push(mid);
+      indicatorSeriesByBlockId.set(b.id, mid);
       return;
     }
     if (t === "macd") {
@@ -124,7 +145,7 @@ function parseLinearProgram(program, errors) {
       setup.push(`    ${es} = c.ewm(span=${slow}, adjust=False).mean()`);
       setup.push(`    ${line} = ${ef} - ${es}`);
       setup.push(`    ${sig} = ${line}.ewm(span=${signal}, adjust=False).mean()`);
-      stack.push(line, sig);
+      indicatorSeriesByBlockId.set(b.id, line);
       return;
     }
     if (t === "volume") {
@@ -132,27 +153,45 @@ function parseLinearProgram(program, errors) {
       const period = Math.max(1, Math.round(num(b, "period", 1)));
       setup.push(`    ${v} = df["Volume"].astype(float)`);
       if (period > 1) setup.push(`    ${v} = ${v}.rolling(${period}).mean()`);
-      stack.push(v);
+      indicatorSeriesByBlockId.set(b.id, v);
       return;
     }
-    errors.push(`Unsupported indicator type: ${t}`);
+    errors.push(`This indicator type is not supported in the visual compiler: ${t}. Remove it or pick SMA, EMA, RSI, Bollinger, MACD, or Volume.`);
   };
 
   const buildCondition = (b) => {
     const t = b.type;
     const th = num(b, "threshold", 50);
+
     if (t === "if_gt" || t === "if_lt") {
-      if (!needStack(1, t)) return null;
-      const a = stack[stack.length - 1];
+      const idStr = b.params?.indicator != null ? String(b.params.indicator).trim() : "";
+      const a = idStr ? indicatorSeriesByBlockId.get(idStr) : null;
+      if (!a) {
+        if (idStr) {
+          errors.push(
+            `${blockLabel(t)} references an indicator that is not in this strategy (or appears after this condition). Add the indicator in the Indicators lane and pick it from the dropdown.`
+          );
+        }
+        return null;
+      }
       if (t === "if_lt") {
         return `_ok2(${a}, i - 1) and _ok2(${a}, i) and float(${a}.iloc[i - 1]) < ${th} <= float(${a}.iloc[i])`;
       }
       return `_ok2(${a}, i - 1) and _ok2(${a}, i) and float(${a}.iloc[i - 1]) > ${th} >= float(${a}.iloc[i])`;
     }
     if (t === "if_cross_above" || t === "if_cross_below" || t === "if_two_indicators_cross") {
-      if (!needStack(2, t)) return null;
-      const A = stack[stack.length - 2];
-      const B = stack[stack.length - 1];
+      const idA = b.params?.indicator_a != null ? String(b.params.indicator_a).trim() : "";
+      const idB = b.params?.indicator_b != null ? String(b.params.indicator_b).trim() : "";
+      const A = idA ? indicatorSeriesByBlockId.get(idA) : null;
+      const B = idB ? indicatorSeriesByBlockId.get(idB) : null;
+      if (!A || !B) {
+        if (idA && idB) {
+          errors.push(
+            `${blockLabel(t)} references one or more indicators that are not in this strategy. Add both indicator blocks and pick them from the A and B dropdowns.`
+          );
+        }
+        return null;
+      }
       if (t === "if_cross_below") {
         return (
           `_ok2(${A}, i) and _ok2(${B}, i) and _ok2(${A}, i - 1) and _ok2(${B}, i - 1) and ` +
@@ -176,13 +215,19 @@ function parseLinearProgram(program, errors) {
     // If users place them later, treat it as an ordering error.
     if (DATA_TYPES.has(t)) {
       const seenNonData = program.slice(0, i).some((x) => !DATA_TYPES.has(x.type));
-      if (seenNonData) errors.push(`"${t}" must appear at the top of the canvas (before strategy blocks).`);
+      if (seenNonData) {
+        errors.push(
+          `${blockLabel(t)} must stay at the very top of the flow (before indicators, IFs, and trades). Move it above the other blocks or delete the extra copy lower down.`
+        );
+      }
       continue;
     }
 
     if (INDICATOR_TYPES.has(t)) {
       if (pendingWhen?.ok) {
-        errors.push("Add a Buy or Sell after each condition block before adding another indicator.");
+        errors.push(
+          "You still owe a trade under the previous IF. Put Buy, Sell, or Hold under that IF in the Actions lane before adding another indicator."
+        );
       }
       pendingWhen = null;
       pushIndicator(b);
@@ -191,7 +236,9 @@ function parseLinearProgram(program, errors) {
 
     if (CONDITION_TYPES.has(t)) {
       if (pendingWhen?.ok) {
-        errors.push("Each condition must be followed by Buy, Sell, or Hold before the next condition.");
+        errors.push(
+          "Two IF blocks are stacked without a trade between them. After each IF, add Buy, Sell, or Hold, then you can start the next IF."
+        );
       }
       const w = buildCondition(b);
       pendingWhen = w ? { ok: true, expr: w } : { ok: false };
@@ -223,19 +270,25 @@ function parseLinearProgram(program, errors) {
         }
         pendingWhen = null;
       } else if (pendingWhen && !pendingWhen.ok) {
-        errors.push("Fix the IF block above (add indicators before it) before Buy/Sell.");
+        errors.push(
+          "This Buy or Sell follows an IF that could not be built (usually: pick the indicator(s) for that IF, or add the indicator blocks first). Fix the IF block, then try again."
+        );
         pendingWhen = null;
       } else if (t === "buy") {
         bar0Buys.push(b);
       } else {
-        errors.push("Sell blocks need a condition block immediately above (e.g. IF crosses below → Sell).");
+        errors.push(
+          "Sell always needs an IF immediately above it (for example: IF crosses below, then Sell). Add that IF or use Buy for an entry-only rule."
+        );
       }
       continue;
     }
 
     if (t === "hold") {
       if (pendingWhen?.ok) {
-        errors.push("Hold cannot follow a condition — use Buy or Sell.");
+        errors.push(
+          "Hold cannot sit directly under an IF. Use Buy or Sell when the condition fires, or place Hold between completed rules instead."
+        );
       }
       pendingWhen = null;
       continue;
@@ -243,18 +296,22 @@ function parseLinearProgram(program, errors) {
 
     if (RISK_TYPES.has(t)) {
       if (pendingWhen?.ok) {
-        errors.push("Add Buy or Sell after a condition before risk blocks.");
+        errors.push(
+          "Finish the active IF with Buy or Sell before adding stop loss, take profit, or max position."
+        );
       }
       pendingWhen = null;
       risks.push(b);
       continue;
     }
 
-    errors.push(`Unknown or unsupported block: ${t}`);
+    errors.push(`Unknown block: ${t}. Remove it or choose a block from the palette.`);
   }
 
   if (pendingWhen?.ok) {
-    errors.push("Last condition has no Buy/Sell — add an action block below it.");
+    errors.push(
+      "The strategy ends with an IF that has no Buy or Sell under it. Add Buy, Sell, or Hold below that last IF."
+    );
   }
 
   return { setup, rules, bar0Buys, risks };
@@ -496,6 +553,29 @@ export function translateVisualBlocksToPythonWithDiagnostics(blocks, { ticker, s
     return { code: emitEmptyStrategy(t, s, e), errors: [] };
   }
 
+  const needsTwoIndicators = new Set(["if_cross_above", "if_cross_below", "if_two_indicators_cross"]);
+  for (const b of program) {
+    if (!CONDITION_TYPES.has(b.type)) continue;
+    const needsTwo = needsTwoIndicators.has(b.type);
+    const pa = b.params && typeof b.params === "object" ? b.params : {};
+    if (needsTwo) {
+      const a = pa.indicator_a != null ? String(pa.indicator_a).trim() : "";
+      const bee = pa.indicator_b != null ? String(pa.indicator_b).trim() : "";
+      if (!a || !bee) {
+        errors.push(`"${b.type.replace(/_/g, " ")}" needs both indicator A and B selected.`);
+      }
+    } else {
+      const ind = pa.indicator != null ? String(pa.indicator).trim() : "";
+      if (!ind) {
+        errors.push(`"${b.type.replace(/_/g, " ")}" needs an indicator selected.`);
+      }
+    }
+  }
+
+  if (errors.length) {
+    return { code: emitCompileErrorRaising(t, s, e, errors), errors };
+  }
+
   const parsed = parseLinearProgram(program, errors);
 
   if (errors.length) {
@@ -505,7 +585,9 @@ export function translateVisualBlocksToPythonWithDiagnostics(blocks, { ticker, s
   const hasLogic =
     parsed.setup.length > 0 || parsed.rules.length > 0 || parsed.bar0Buys.length > 0 || parsed.risks.length > 0;
   if (!hasLogic) {
-    errors.push("Add indicators, conditions, and trades — only data blocks are not enough.");
+    errors.push(
+      "Only data blocks are present. Add at least one indicator, one IF, and a Buy or Sell so the strategy can generate signals."
+    );
     return { code: emitCompileErrorRaising(t, s, e, errors), errors };
   }
 
@@ -515,4 +597,106 @@ export function translateVisualBlocksToPythonWithDiagnostics(blocks, { ticker, s
 /** @param {VisualBlock[]} blocks */
 export function translateVisualBlocksToPython(blocks, ctx) {
   return translateVisualBlocksToPythonWithDiagnostics(blocks, ctx).code;
+}
+
+function indicatorExpr(ind) {
+  const map = {
+    "RSI(14)": "rsi_14",
+    "SMA(20)": "sma_20",
+    "SMA(50)": "sma_50",
+    "EMA(12)": "ema_12",
+    "EMA(26)": "ema_26",
+    MACD: "macd",
+    "Bollinger upper": "bb_upper",
+    "Bollinger lower": "bb_lower",
+    Price: "prices.iloc[-1]",
+    Volume: "volume",
+  };
+  if (map[ind]) return map[ind];
+  return String(ind || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "_");
+}
+
+export function translateRulesToPython(simpleRules, advancedRules, builderMode, { ticker, start, end }) {
+  const rules = builderMode === "simple" ? simpleRules : advancedRules;
+  if (!Array.isArray(rules) || rules.length === 0) return "";
+
+  const entryRules = rules.filter((r) => r?.type === "entry");
+  const exitRules = rules.filter((r) => r?.type === "exit");
+  const riskRules = rules.filter((r) => r?.type === "risk");
+
+  function condToPython(cond) {
+    const ind = indicatorExpr(cond?.ind);
+    switch (cond?.op) {
+      case "crosses above":
+        return `crossover(${ind}, ${ind}_prev)`;
+      case "crosses below":
+        return `crossunder(${ind}, ${ind}_prev)`;
+      case "is above":
+        return `${ind} > ${cond?.val || 0}`;
+      case "is below":
+        return `${ind} < ${cond?.val || 0}`;
+      default:
+        return `${ind} > 0`;
+    }
+  }
+
+  function stepToPython(step) {
+    const conds = Array.isArray(step?.conds) ? step.conds : [];
+    return conds
+      .map((c, i) => {
+        const expr = condToPython(c);
+        if (i === 0) return expr;
+        return `${c.joiner === "OR" ? " or " : " and "}${expr}`;
+      })
+      .join("");
+  }
+
+  function ruleToPython(rule) {
+    if (builderMode === "simple") {
+      const conds = Array.isArray(rule?.conds) ? rule.conds : [];
+      return conds
+        .map((c, i) => {
+          const expr = condToPython(c);
+          if (i === 0) return expr;
+          return `${c.joiner === "OR" ? " or " : " and "}${expr}`;
+        })
+        .join("");
+    }
+    const steps = Array.isArray(rule?.steps) ? rule.steps : [];
+    return steps.map((s) => `(${stepToPython(s)})`).join(" and ");
+  }
+
+  const entryCondition = entryRules.map((r) => `(${ruleToPython(r)})`).join(" or ");
+  const exitCondition = exitRules.map((r) => `(${ruleToPython(r)})`).join(" or ");
+
+  const entryAction = entryRules[0]?.action || "Buy — all cash";
+  const sizeExpr = entryAction.includes("50%")
+    ? "0.5 * data.portfolio.cash"
+    : entryAction.includes("fixed")
+      ? "1000"
+      : "data.portfolio.cash";
+
+  const stopLoss = riskRules.find((r) => String(r?.action || "").includes("Stop loss"));
+  const takeProfit = riskRules.find((r) => String(r?.action || "").includes("Take profit"));
+
+  return `
+def run(data):
+    import pandas as pd
+    prices = data.history['${ticker}']['close']
+
+    # Entry
+    entry_signal = ${entryCondition || "False"}
+
+    # Exit
+    exit_signal = ${exitCondition || "False"}
+
+    if exit_signal and data.portfolio.position > 0:
+        data.sell(quantity=data.portfolio.position)
+    elif entry_signal and data.portfolio.cash > 0:
+        data.buy(amount=${sizeExpr})
+    ${stopLoss ? `\n    # Stop loss at ${stopLoss.actionVal}%` : ""}
+    ${takeProfit ? `\n    # Take profit at ${takeProfit.actionVal}%` : ""}
+`.trim();
 }

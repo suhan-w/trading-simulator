@@ -319,7 +319,7 @@ export default function LeaderboardPage() {
       return "Make 10 trades to appear on the all-time leaderboard.";
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Trade to appear here.";
+      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
     }
     if (y.banner_kind === "no_overlap") {
       return "No qualifying paper snapshot for this time window.";
@@ -337,12 +337,12 @@ export default function LeaderboardPage() {
       return `Make ${y.min_trades} trades this month to appear on the leaderboard. You have ${y.trades_this_month} so far.`;
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Trade to appear here.";
+      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
     }
     if (y.banner_kind === "no_paper" || y.banner_kind === "no_baseline") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Trade to appear here.";
+      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
     }
-    return "Enable “Share this strategy anonymously on the leaderboard” on Account or Trade to appear here.";
+    return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
   }, [monthly]);
 
   const copyToStrategy = useCallback(() => {
@@ -588,7 +588,7 @@ export default function LeaderboardPage() {
                   </div>
                 </section>
                 <p className="lb-opt-out-note">
-                  Your performance is visible to the community. Turn off “Share this strategy anonymously on the leaderboard” on Account or Trade to opt out.
+                  Your performance is visible to the community. Turn off “Share this strategy anonymously on the leaderboard” on Account or Backtesting to opt out.
                 </p>
               </>
             ) : null
@@ -645,7 +645,7 @@ export default function LeaderboardPage() {
                           <th>Strategy</th>
                           <th>Ticker</th>
                           <th>Period</th>
-                          <th>Key Metric</th>
+                          <th className="lb-td-center">Key Metric</th>
                           <th className="lb-td-right">Sharpe</th>
                           <th className="lb-td-right">Drawdown</th>
                           <th className="lb-td-action">Action</th>
@@ -658,7 +658,9 @@ export default function LeaderboardPage() {
                             <td className="lb-td-mono">{row.strategy_label}</td>
                             <td className="lb-td-mono">{row.ticker || "—"}</td>
                             <td className="lb-td-mono">{fmtPeriod(row.period_start, row.period_end)}</td>
-                            <td className={`lb-td-key ${keyMetricClass(strategyLabCat, row.value)}`}>{row.value_label}</td>
+                            <td className={`lb-td-key lb-td-center ${keyMetricClass(strategyLabCat, row.value)}`}>
+                              {row.value_label}
+                            </td>
                             <td className="lb-td-mono lb-td-right">{row.sharpe_ratio == null ? "—" : Number(row.sharpe_ratio).toFixed(2)}</td>
                             <td className={`lb-td-mono lb-td-right ${row.max_drawdown_pct != null && row.max_drawdown_pct > 0 ? "lb-num-neg" : ""}`}>
                               {row.max_drawdown_pct == null ? "—" : `${Number(row.max_drawdown_pct).toFixed(2)}%`}
