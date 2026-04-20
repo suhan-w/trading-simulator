@@ -7,7 +7,7 @@ import {
 } from "../constants/strategyPaletteGlossary";
 
 /** @param {{ type: string }} props */
-function GlossaryExampleSvg({ type }) {
+export function GlossaryExampleSvg({ type }) {
   const common = { width: 120, height: 64, viewBox: "0 0 120 64", "aria-hidden": true };
   switch (type) {
     case "sma":
@@ -94,6 +94,18 @@ function GlossaryExampleSvg({ type }) {
             const h = 10 + (i % 5) * 8;
             return <rect key={i} x={x - 5} y={56 - h} width="8" height={h} fill="#4a90d9" opacity="0.7" />;
           })}
+        </svg>
+      );
+    case "select_data":
+      return (
+        <svg {...common} className="glossary-example-svg">
+          <rect x="12" y="12" width="96" height="52" rx="6" fill="#fdf8f0" stroke="#c8963e" strokeWidth="2" />
+          <text x="60" y="30" textAnchor="middle" fontSize="11" fill="#111" fontFamily="monospace">
+            CBA.AX
+          </text>
+          <text x="60" y="48" textAnchor="middle" fontSize="8" fill="#666">
+            start → end
+          </text>
         </svg>
       );
     case "select_stock":

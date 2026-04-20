@@ -88,3 +88,40 @@ export function listBacktestRunsInRange(start, end) {
     return d >= start && d <= end;
   });
 }
+
+/** Normalize strategy code so whitespace-only edits don’t split “duplicates”. */
+function normalizedCodeFingerprint(code) {
+  return String(code || "")
+    .trim()
+    .replace(/\r\n/g, "\n")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Same logical backtest repeated on different days produces multiple rows with new IDs.
+ * Keep one row per unique (ticker, window, strategy name, code): the first in the list,
+ * which is the most recent run because history is stored newest-first.
+ *
+ * @param {BacktestRunRecord[]} runs
+ * @returns {BacktestRunRecord[]}
+ */
+export function dedupeBacktestRuns(runs) {
+  if (!runs?.length) return [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @type {BacktestRunRecord[]} */
+  const out = [];
+  for (const r of runs) {
+    const key = [
+      r.ticker,
+      r.btStart,
+      r.btEnd,
+      (r.strategyName || "").trim(),
+      normalizedCodeFingerprint(r.code),
+    ].join("\x1e");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}

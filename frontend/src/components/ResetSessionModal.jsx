@@ -56,8 +56,11 @@ export default function ResetSessionModal({ open, onClose, onConfirm, busy = fal
         aria-labelledby="reset-session-title"
         aria-describedby="reset-session-desc"
       >
-        <h2 id="reset-session-title" className="cs-modal-title">
-          <span className="cs-modal-title-dot" aria-hidden />
+        <h2
+          id="reset-session-title"
+          className="m-0 font-medium leading-tight tracking-tight"
+          style={{ fontSize: "18px", fontWeight: 500, color: "#111111" }}
+        >
           New Session
         </h2>
         <p id="reset-session-desc" className="cs-modal-body">

@@ -1,5 +1,4 @@
-export default function ShareLeaderboardBanner({ entryId, sharePublic, onChangeShare, disabled }) {
-  if (entryId == null) return null;
+export default function ShareLeaderboardBanner({ sharePublic, onChangeShare, disabled }) {
   return (
     <div className="lb-share-banner" role="region" aria-label="Leaderboard sharing">
       <span className="lb-share-banner-label">Share this strategy anonymously on the leaderboard?</span>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -123,6 +123,34 @@ export default function TradingPerformanceReportModal({
 }) {
   const bodyRef = useRef(null);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [selectedBtIds, setSelectedBtIds] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedBtIds(new Set(backtestRuns.map((r) => r.id)));
+  }, [open, backtestRuns]);
+
+  const includedBacktestRuns = useMemo(
+    () => backtestRuns.filter((r) => selectedBtIds.has(r.id)),
+    [backtestRuns, selectedBtIds]
+  );
+
+  const toggleBacktestInPdf = useCallback((id) => {
+    setSelectedBtIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAllBacktests = useCallback(() => {
+    setSelectedBtIds(new Set(backtestRuns.map((r) => r.id)));
+  }, [backtestRuns]);
+
+  const selectNoBacktests = useCallback(() => {
+    setSelectedBtIds(new Set());
+  }, []);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -205,7 +233,7 @@ export default function TradingPerformanceReportModal({
 
   const genAt = generatedAt || new Date().toISOString();
 
-  const firstBt = backtestRuns[0];
+  const firstBt = includedBacktestRuns[0];
   const firstBtTr =
     firstBt?.metrics && firstBt.metrics.total_return_pct != null ? Number(firstBt.metrics.total_return_pct) : null;
   const backtestVsPaperNote =
@@ -226,6 +254,39 @@ export default function TradingPerformanceReportModal({
         </button>
       </div>
       <div className="tpr-scroll">
+        {backtestRuns.length > 0 ? (
+          <div className="tpr-bt-pick-wrap">
+            <p className="tpr-bt-pick-heading">Backtest results in this report &amp; PDF</p>
+            <p className="tpr-bt-pick-hint">Tick the runs to include. Only checked items appear in the printable report below.</p>
+            <ul className="tpr-bt-pick-list">
+              {backtestRuns.map((run) => (
+                <li key={run.id}>
+                  <label className="tpr-bt-pick-row">
+                    <input
+                      type="checkbox"
+                      checked={selectedBtIds.has(run.id)}
+                      onChange={() => toggleBacktestInPdf(run.id)}
+                    />
+                    <span className="tpr-bt-pick-label-text">
+                      <span className="tpr-bt-pick-name">{run.strategyName || "Saved backtest"}</span>
+                      <span className="tpr-mono tpr-bt-pick-meta">
+                        {run.ticker} · ran {run.ranAt.slice(0, 10)} · {run.btStart} → {run.btEnd}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="tpr-bt-pick-actions">
+              <button type="button" className="tpr-bt-pick-linkbtn" onClick={selectAllBacktests}>
+                Select all
+              </button>
+              <button type="button" className="tpr-bt-pick-linkbtn" onClick={selectNoBacktests}>
+                Clear
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div ref={bodyRef} className="tpr-doc">
           <header className="tpr-header">
             <div className="tpr-header-top">
@@ -375,7 +436,10 @@ export default function TradingPerformanceReportModal({
                 <span className="tpr-gold-sq" aria-hidden />
                 Backtest results
               </h2>
-              {backtestRuns.map((run) => {
+              {includedBacktestRuns.length === 0 ? (
+                <p className="tpr-note">No backtests selected — use the checklist above to add runs to this report.</p>
+              ) : null}
+              {includedBacktestRuns.map((run) => {
                 const m = run.metrics || {};
                 const btTr = m.total_return_pct != null ? Number(m.total_return_pct) : null;
                 const btWr = m.win_rate_pct != null ? Number(m.win_rate_pct) : null;
@@ -436,7 +500,7 @@ export default function TradingPerformanceReportModal({
                   </div>
                 );
               })}
-              <p className="tpr-note">{backtestVsPaperNote}</p>
+              {includedBacktestRuns.length > 0 ? <p className="tpr-note">{backtestVsPaperNote}</p> : null}
             </section>
           ) : null}
 

@@ -177,6 +177,31 @@ def my_leaderboard_entries(
     ]
 
 
+@router.patch("/mine/paper-sharing", response_model=LeaderboardEntryMineOut)
+def patch_paper_sharing_preference(
+    body: LeaderboardEntryPatchIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Ensure a paper row exists (even with zero trades), then set share_public."""
+    e = leaderboard_service.ensure_paper_leaderboard_row(db, user)
+    e.share_public = bool(body.share_public)
+    db.commit()
+    db.refresh(e)
+    return LeaderboardEntryMineOut(
+        id=e.id,
+        anon_id=e.anon_id,
+        strategy_seq=int(e.strategy_seq or 0),
+        source=e.source,
+        period_start=e.period_start,
+        period_end=e.period_end,
+        share_public=e.share_public,
+        total_return_pct=e.total_return_pct,
+        trade_count=e.trade_count,
+        created_at=e.created_at or e.updated_at or datetime.utcnow(),
+    )
+
+
 @router.get("/entries/{entry_id}", response_model=LeaderboardDetailOut)
 def get_entry_detail(
     entry_id: int,

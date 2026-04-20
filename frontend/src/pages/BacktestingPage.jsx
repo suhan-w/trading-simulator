@@ -13,6 +13,8 @@ import {
   BacktestVsBenchmarkChart,
 } from "../components/BacktestCharts";
 import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import ShareLeaderboardBanner from "../components/ShareLeaderboardBanner";
 import LeaderboardPage from "./LeaderboardPage";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
 import { TRADE_STRATEGY_REMINDER_KEY } from "../constants/tradeReminder";
@@ -37,10 +39,7 @@ function fmtPct(x, digits = 2) {
 function MetricCard({ label, value, hint }) {
   return (
     <div className="backtest-metric-card">
-      <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-        <span className="h-2 w-2 shrink-0 rounded-[1px] bg-gold shadow-card-sm" />
-        <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-[#bbbbbb]">{label}</p>
-      </div>
+      <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-[#bbbbbb]">{label}</p>
       <p className="mb-0 mt-2 font-mono text-[20px] font-medium tabular-nums text-ink">{value}</p>
       {hint ? <p className="mb-0 mt-1 text-[11px] leading-snug text-[#888888]">{hint}</p> : null}
     </div>
@@ -49,7 +48,10 @@ function MetricCard({ label, value, hint }) {
 
 export default function BacktestingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [tab, setTab] = useState("backtest");
+  const [paperSharePublic, setPaperSharePublic] = useState(false);
+  const [paperShareBusy, setPaperShareBusy] = useState(false);
   const { start: defaultStart, end: defaultEnd } = useMemo(() => defaultRange(), []);
   const [ticker, setTicker] = useState("CBA.AX");
   const [start, setStart] = useState(defaultStart);
@@ -176,6 +178,15 @@ export default function BacktestingPage() {
           Leaderboard
         </button>
       </div>
+      {user ? (
+        <div className="backtest-lb-share-wrap">
+          <ShareLeaderboardBanner
+            sharePublic={paperSharePublic}
+            onChangeShare={(v) => void onPaperShareToggle(v)}
+            disabled={paperShareBusy}
+          />
+        </div>
+      ) : null}
       {tab === "backtest" ? (
         <div className="space-y-6 md:space-y-8">
           <SectionHeading
@@ -261,10 +272,7 @@ export default function BacktestingPage() {
                   aria-controls="backtest-basket-panel"
                   id="backtest-basket-toggle"
                 >
-                  <span className="grid grid-cols-[auto_1fr] items-center gap-2">
-                    <span className="h-2 w-2 shrink-0 rounded-[1px] bg-gold shadow-card-sm" aria-hidden />
-                    <span className="text-sm font-semibold text-ink">Strategy Basket</span>
-                  </span>
+                  <span className="text-sm font-semibold text-ink">Strategy Basket</span>
                   <span className="font-mono text-sm font-medium text-muted" aria-hidden>
                     {basketOpen ? "−" : "+"}
                   </span>
@@ -287,8 +295,7 @@ export default function BacktestingPage() {
                               const blocks =
                                 t.key === "ma"
                                   ? [
-                                      { type: "select_stock" },
-                                      { type: "select_date_range" },
+                                      { type: "select_data" },
                                       { type: "sma", params: { period: 20 } },
                                       { type: "sma", params: { period: 50 } },
                                       { type: "if_cross_above" },
@@ -298,8 +305,7 @@ export default function BacktestingPage() {
                                     ]
                                   : t.key === "rsi"
                                     ? [
-                                        { type: "select_stock" },
-                                        { type: "select_date_range" },
+                                        { type: "select_data" },
                                         { type: "rsi", params: { period: 14 } },
                                         { type: "if_lt", params: { threshold: 30 } },
                                         { type: "buy", params: { mode: "all_cash" } },
@@ -307,8 +313,7 @@ export default function BacktestingPage() {
                                         { type: "sell", params: { mode: "all" } },
                                       ]
                                     : [
-                                        { type: "select_stock" },
-                                        { type: "select_date_range" },
+                                        { type: "select_data" },
                                         { type: "buy", params: { mode: "all_cash" } },
                                         { type: "hold" },
                                       ];
@@ -410,7 +415,6 @@ export default function BacktestingPage() {
                       <BacktestVsBenchmarkChart comparison={result.series.comparison} height={BACKTEST_CHART_PLOT_HEIGHT} chrome="plot" />
                     ) : (
                       <div className="chart-empty">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )}
@@ -436,7 +440,6 @@ export default function BacktestingPage() {
                       <BacktestSignalsChart signals={result.series.signals} height={BACKTEST_CHART_PLOT_HEIGHT} chrome="plot" />
                     ) : (
                       <div className="chart-empty">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )}
@@ -462,7 +465,6 @@ export default function BacktestingPage() {
                       <BacktestDrawdownChart drawdown={result.series.drawdown} height={BACKTEST_CHART_PLOT_HEIGHT} chrome="plot" />
                     ) : (
                       <div className="chart-empty">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )}
@@ -488,7 +490,6 @@ export default function BacktestingPage() {
                       <BacktestDailyReturnsChart daily={result.series.daily_returns} height={BACKTEST_CHART_PLOT_HEIGHT} chrome="plot" />
                     ) : (
                       <div className="chart-empty">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )}
@@ -537,7 +538,6 @@ export default function BacktestingPage() {
                       <BacktestVsBenchmarkChart comparison={result.series.comparison} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )
@@ -547,7 +547,6 @@ export default function BacktestingPage() {
                       <BacktestSignalsChart signals={result.series.signals} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )
@@ -557,7 +556,6 @@ export default function BacktestingPage() {
                       <BacktestDrawdownChart drawdown={result.series.drawdown} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )
@@ -567,7 +565,6 @@ export default function BacktestingPage() {
                       <BacktestDailyReturnsChart daily={result.series.daily_returns} height={520} chrome="plot" fillContainer />
                     ) : (
                       <div className="chart-empty chart-empty--expanded">
-                        <span className="lb-gold-sq" aria-hidden />
                         <p className="m-0">Run a backtest to see this chart.</p>
                       </div>
                     )

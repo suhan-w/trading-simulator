@@ -13,13 +13,6 @@ const STORAGE_STRATEGY_LAB_CAT = "strategylab_active_category";
 
 const MONO = "'SF Mono', 'Fira Code', ui-monospace, monospace";
 
-const STRATEGY_LAB_SUBTITLES = {
-  return: "Strategies with the highest overall return over their test period.",
-  sharpe: "Best risk-adjusted return — higher means better return per unit of risk.",
-  drawdown: "Strategies that lost the least from their peak.",
-  trades: "Strategies that generated the most trade signals.",
-};
-
 const STRATEGY_LAB_LABELS = {
   return: "Highest Return",
   sharpe: "Best Sharpe",
@@ -126,11 +119,11 @@ function formatCountdown(closesAtIso) {
 function MonthlyCountdown({ closesAt }) {
   const [, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setTick((x) => x + 1), 1000);
+    const id = setInterval(() => setTick((x) => x + 1), 60_000);
     return () => clearInterval(id);
   }, []);
   const { label, urgent } = formatCountdown(closesAt);
-  return <span className={`lb-countdown-mono mono ${urgent ? "lb-countdown--urgent" : ""}`}>{label}</span>;
+  return <span className={`lb-countdown-mono ${urgent ? "lb-countdown--urgent" : ""}`}>{label}</span>;
 }
 
 export default function LeaderboardPage() {
@@ -326,7 +319,7 @@ export default function LeaderboardPage() {
       return "Make 10 trades to appear on the all-time leaderboard.";
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable public ranking in Account settings to appear here.";
+      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
     }
     if (y.banner_kind === "no_overlap") {
       return "No qualifying paper snapshot for this time window.";
@@ -344,12 +337,12 @@ export default function LeaderboardPage() {
       return `Make ${y.min_trades} trades this month to appear on the leaderboard. You have ${y.trades_this_month} so far.`;
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable public ranking in Account settings to appear here.";
+      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
     }
     if (y.banner_kind === "no_paper" || y.banner_kind === "no_baseline") {
-      return "Enable public ranking in Account settings to appear here.";
+      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
     }
-    return "Enable public ranking in Account settings to appear here.";
+    return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
   }, [monthly]);
 
   const copyToStrategy = useCallback(() => {
@@ -372,9 +365,9 @@ export default function LeaderboardPage() {
   }, [detail, navigate]);
 
   const windowPills = [
-    { key: "all", label: "All Time" },
-    { key: "90d", label: "90 Days" },
-    { key: "30d", label: "30 Days" },
+    { key: "all", label: "All time" },
+    { key: "90d", label: "90 days" },
+    { key: "30d", label: "30 days" },
   ];
 
   const communitySubPills = [
@@ -422,7 +415,7 @@ export default function LeaderboardPage() {
                 type="button"
                 role="tab"
                 aria-selected={communitySubTab === p.key}
-                className={`lb-window-pill ${communitySubTab === p.key ? "lb-window-pill--active" : ""}`}
+                className={`lb-community-subtab-pill ${communitySubTab === p.key ? "lb-community-subtab-pill--active" : ""}`}
                 onClick={() => setCommunitySubTab(p.key)}
               >
                 {p.label}
@@ -439,54 +432,50 @@ export default function LeaderboardPage() {
               <>
                 <div className="lb-countdown-banner">
                   <div className="lb-countdown-banner-left">
-                    <span className="lb-gold-sq lb-gold-sq--12" />
+                    <span className="lb-rank-sq lb-rank-gold" aria-hidden />
                     <span className="lb-countdown-season-title">{monthly.season_title}</span>
                   </div>
                   <MonthlyCountdown closesAt={monthly.closes_at} />
                 </div>
 
                 <div
-                  className={`lb-user-rank-strip mono ${monthly?.you?.eligible ? "lb-user-rank-strip--highlight" : "lb-user-rank-strip--muted"}`}
+                  className={`lb-user-rank-strip ${monthly?.you?.eligible ? "lb-user-rank-strip--highlight" : "lb-user-rank-strip--muted"}`}
                 >
                   {monthlyUserStrip}
                 </div>
 
-                <section className="lb-card lb-card--community">
-                  <div className="lb-card-head">
-                    <span className="lb-gold-sq lb-gold-sq--12" />
-                    <div>
-                      <h3 className="lb-card-title">{monthly.season_month_label}</h3>
-                      <p className="lb-card-sub">
-                        Ranked by total return % this calendar month. Minimum 5 trades to appear.
-                      </p>
-                    </div>
-                  </div>
-
+                <section className="lb-card lb-card--table-only lb-card--community">
                   <div className="lb-table-scroll">
-                    <table className="lb-table lb-table--community">
+                    <table className="lb-table lb-table-fixed lb-table--community">
+                      <colgroup>
+                        <col style={{ width: 52 }} />
+                        <col style={{ width: "22%" }} />
+                        <col style={{ width: "12%" }} />
+                        <col style={{ width: "20%" }} />
+                        <col style={{ width: "12%" }} />
+                        <col style={{ width: "12%" }} />
+                      </colgroup>
                       <thead className="lb-thead">
                         <tr>
                           <th>Rank</th>
-                          <th>Trader ID</th>
-                          <th className="text-right">Trades This Month</th>
-                          <th className="text-right">Monthly Return</th>
-                          <th className="text-right">Sharpe</th>
-                          <th className="text-right">Win Rate</th>
+                          <th>Trader</th>
+                          <th className="lb-td-right">Trades</th>
+                          <th className="lb-td-right">Monthly Return</th>
+                          <th className="lb-td-right">Sharpe</th>
+                          <th className="lb-td-right">Win Rate</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(monthly.rows || []).map((row) => (
-                          <tr key={`${row.rank}-${row.trader_label}`} className={`lb-row ${row.is_mine ? "lb-row--mine" : ""}`}>
-                            <td>{rankCell(row.rank)}</td>
-                            <td className="mono">{row.trader_label}</td>
-                            <td className="mono text-right sub">{row.trades_this_month}</td>
-                            <td
-                              className={`mono text-right lb-monthly-return-key ${row.monthly_return_pct >= 0 ? "lb-num-pos" : "lb-num-neg"}`}
-                            >
+                        {(monthly.rows || []).slice(0, 10).map((row) => (
+                          <tr key={`${row.rank}-${row.trader_label}`} className={row.is_mine ? "lb-row--mine" : ""}>
+                            <td className="lb-td-mono">{rankCell(row.rank)}</td>
+                            <td className="lb-td-mono">{row.trader_label}</td>
+                            <td className="lb-td-mono lb-td-right">{row.trades_this_month}</td>
+                            <td className={`lb-td-right lb-td-key ${row.monthly_return_pct >= 0 ? "lb-num-pos" : "lb-num-neg"}`}>
                               {fmtSignedPct(row.monthly_return_pct)}
                             </td>
-                            <td className="mono text-right sub">{row.sharpe_ratio == null ? "—" : Number(row.sharpe_ratio).toFixed(2)}</td>
-                            <td className="mono text-right sub">
+                            <td className="lb-td-mono lb-td-right">{row.sharpe_ratio == null ? "—" : Number(row.sharpe_ratio).toFixed(2)}</td>
+                            <td className="lb-td-mono lb-td-right">
                               {row.win_rate_pct == null ? "—" : `${Number(row.win_rate_pct).toFixed(1)}%`}
                             </td>
                           </tr>
@@ -494,10 +483,6 @@ export default function LeaderboardPage() {
                       </tbody>
                     </table>
                   </div>
-
-                  <p className="lb-season-footnote">
-                    Rankings update in real time. Season resets on the 1st of each month.
-                  </p>
                 </section>
               </>
             ) : null
@@ -510,19 +495,18 @@ export default function LeaderboardPage() {
               <>
                 <div className="lb-hof-wrap">
                   <div className="lb-hof-card">
-                    <div className="lb-hof-icon gold" aria-hidden />
+                    <div className="lb-hof-icon" aria-hidden />
                     <p className="lb-hof-kicker">Last Season&apos;s Champion</p>
-                    <p className="lb-hof-name mono">{hof.trader_label}</p>
+                    <p className="lb-hof-name">{hof.trader_label}</p>
                     <p className="lb-hof-month">{hof.month_label}</p>
-                    <p className="lb-hof-return mono lb-num-pos">{fmtSignedPct(hof.return_pct)}</p>
-                    <div className="lb-hof-meta mono">
+                    <p className={`lb-hof-return ${hof.return_pct >= 0 ? "lb-num-pos" : "lb-num-neg"}`}>{fmtSignedPct(hof.return_pct)}</p>
+                    <div className="lb-hof-meta">
                       <span>{hof.trade_count} trades</span>
                       <span aria-hidden> · </span>
                       <span>{hof.sharpe_ratio == null ? "—" : `${Number(hof.sharpe_ratio).toFixed(2)} Sharpe`}</span>
                     </div>
                   </div>
                 </div>
-                <p className="lb-hof-caption">Hall of Fame records the winner of each calendar month season.</p>
               </>
             ) : (
               <div className="lb-hof-wrap">
@@ -540,21 +524,15 @@ export default function LeaderboardPage() {
               <p className="lb-error-text">{alltimeError}</p>
             ) : alltime ? (
               <>
-                <div className={`lb-slim-banner mono ${alltime?.you?.banner_kind === "insufficient_trades" ? "lb-month-strip--muted" : ""}`}>
+                <div className={`lb-slim-banner ${alltime?.you?.banner_kind === "insufficient_trades" ? "lb-user-rank-strip--muted" : ""}`}>
                   {allTimeBannerLine}
                 </div>
 
-                <section className="lb-card lb-card--community">
-                  <div className="lb-card-head-row">
-                    <div className="lb-card-head">
-                      <span className="lb-gold-sq lb-gold-sq--12" />
-                      <div>
-                        <h3 className="lb-card-title">All-Time Total Return</h3>
-                        <p className="lb-card-sub">
-                          Cumulative return since account creation. Minimum 10 trades to appear.
-                        </p>
-                      </div>
-                    </div>
+                <section className="lb-card lb-card--table-only lb-card--community">
+                  <div className="lb-card-toolbar">
+                    <span className="lb-card-title" style={{ margin: 0 }}>
+                      All-time rankings
+                    </span>
                     <div className="lb-window-toggle" role="group" aria-label="All-time ranking window">
                       {windowPills.map((p) => (
                         <button
@@ -570,38 +548,48 @@ export default function LeaderboardPage() {
                   </div>
 
                   <div className="lb-table-scroll">
-                    <table className="lb-table lb-table--community">
+                    <table className="lb-table lb-table-fixed lb-table--community">
+                      <colgroup>
+                        <col style={{ width: 52 }} />
+                        <col style={{ width: "18%" }} />
+                        <col style={{ width: "14%" }} />
+                        <col style={{ width: "11%" }} />
+                        <col style={{ width: "20%" }} />
+                        <col style={{ width: "11%" }} />
+                        <col style={{ width: "11%" }} />
+                      </colgroup>
                       <thead className="lb-thead">
                         <tr>
                           <th>Rank</th>
-                          <th>Trader ID</th>
-                          <th>Member Since</th>
-                          <th className="text-right">Total Trades</th>
-                          <th className="text-right">All-Time Return</th>
-                          <th className="text-right">Sharpe</th>
-                          <th className="text-right">Win Rate</th>
+                          <th>Trader</th>
+                          <th>Since</th>
+                          <th className="lb-td-right">Trades</th>
+                          <th className="lb-td-right">All-Time Return</th>
+                          <th className="lb-td-right">Sharpe</th>
+                          <th className="lb-td-right">Win Rate</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(alltime.rows || []).map((row) => (
-                          <tr key={`${row.rank}-${row.trader_label}`} className={`lb-row ${row.is_mine ? "lb-row--mine" : ""}`}>
-                            <td>{rankCell(row.rank)}</td>
-                            <td className="mono">{row.trader_label}</td>
-                            <td className="mono">{row.member_since}</td>
-                            <td className="mono text-right sub">{row.total_trades}</td>
-                            <td className={`mono text-right lb-monthly-return-key ${row.total_return_pct >= 0 ? "lb-num-pos" : "lb-num-neg"}`}>
+                        {(alltime.rows || []).slice(0, 10).map((row) => (
+                          <tr key={`${row.rank}-${row.trader_label}`} className={row.is_mine ? "lb-row--mine" : ""}>
+                            <td className="lb-td-mono">{rankCell(row.rank)}</td>
+                            <td className="lb-td-mono">{row.trader_label}</td>
+                            <td className="lb-td-mono">{row.member_since}</td>
+                            <td className="lb-td-mono lb-td-right">{row.total_trades}</td>
+                            <td className={`lb-td-right lb-td-key ${row.total_return_pct >= 0 ? "lb-num-pos" : "lb-num-neg"}`}>
                               {fmtSignedPct(row.total_return_pct)}
                             </td>
-                            <td className="mono text-right sub">{row.sharpe_ratio == null ? "—" : Number(row.sharpe_ratio).toFixed(2)}</td>
-                            <td className="mono text-right sub">{row.win_rate_pct == null ? "—" : `${Number(row.win_rate_pct).toFixed(1)}%`}</td>
+                            <td className="lb-td-mono lb-td-right">{row.sharpe_ratio == null ? "—" : Number(row.sharpe_ratio).toFixed(2)}</td>
+                            <td className="lb-td-mono lb-td-right">{row.win_rate_pct == null ? "—" : `${Number(row.win_rate_pct).toFixed(1)}%`}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-
-                  <p className="lb-opt-out-note">Your performance is visible to the community. Disable in Account → Privacy.</p>
                 </section>
+                <p className="lb-opt-out-note">
+                  Your performance is visible to the community. Turn off “Share this strategy anonymously on the leaderboard” on Account or Backtesting to opt out.
+                </p>
               </>
             ) : null
           ) : null}
@@ -614,7 +602,7 @@ export default function LeaderboardPage() {
             <p className="lb-error-text">{bundleError}</p>
           ) : (
             <>
-              <div className="lb-slim-banner mono">{strategyLabBestLine}</div>
+              <div className="lb-slim-banner">{strategyLabBestLine}</div>
 
               <div className="lb-category-pills" role="tablist" aria-label="Strategy Lab category">
                 {catPills.map((p) => (
@@ -633,49 +621,51 @@ export default function LeaderboardPage() {
 
               {bundle?.show_empty_state ? (
                 <section className="lb-card lb-empty-state lb-empty-state--inset">
-                  <span className="lb-gold-sq lb-gold-sq--12" />
+                  <span className="lb-rank-sq lb-rank-gold" />
                   <h3>No strategies yet</h3>
                   <p>Be the first — run a backtest on the Backtesting tab.</p>
                 </section>
               ) : activeCategory ? (
-                <section className="lb-card">
-                  <div className="lb-card-head">
-                    <span className="lb-gold-sq lb-gold-sq--12" />
-                    <div>
-                      <h3 className="lb-card-title">{STRATEGY_LAB_LABELS[strategyLabCat]}</h3>
-                      <p className="lb-card-sub">{STRATEGY_LAB_SUBTITLES[strategyLabCat]}</p>
-                    </div>
-                  </div>
-
+                <section className="lb-card lb-card--table-only">
                   <div className="lb-table-scroll">
-                    <table className="lb-table lb-table--strategy-lab">
+                    <table className="lb-table lb-table-fixed lb-table--strategy-lab">
+                      <colgroup>
+                        <col style={{ width: 52 }} />
+                        <col style={{ width: "16%" }} />
+                        <col style={{ width: "11%" }} />
+                        <col style={{ width: "16%" }} />
+                        <col style={{ width: "18%" }} />
+                        <col style={{ width: "10%" }} />
+                        <col style={{ width: "10%" }} />
+                        <col style={{ width: 88 }} />
+                      </colgroup>
                       <thead className="lb-thead">
                         <tr>
                           <th>Rank</th>
-                          <th>Strategy ID</th>
+                          <th>Strategy</th>
                           <th>Ticker</th>
                           <th>Period</th>
-                          <th>Key Metric</th>
-                          <th className="text-right">Total Return</th>
-                          <th className="text-right">Sharpe</th>
-                          <th className="text-right">Drawdown</th>
-                          <th>Action</th>
+                          <th className="lb-td-center">Key Metric</th>
+                          <th className="lb-td-right">Sharpe</th>
+                          <th className="lb-td-right">Drawdown</th>
+                          <th className="lb-td-action">Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(activeCategory.rows || []).slice(0, 10).map((row, idx) => (
-                          <tr key={row.id} className={`lb-row ${row.is_mine ? "lb-row--mine" : ""}`}>
-                            <td>{rankCell(idx + 1)}</td>
-                            <td className="mono">{row.strategy_label}</td>
-                            <td className="mono">{row.ticker || "—"}</td>
-                            <td className="mono sub">{fmtPeriod(row.period_start, row.period_end)}</td>
-                            <td className={keyMetricClass(strategyLabCat, row.value)}>{row.value_label}</td>
-                            <td className={`mono sub ${row.total_return_pct >= 0 ? "lb-num-pos" : "lb-num-neg"}`}>
-                              {`${row.total_return_pct >= 0 ? "+" : ""}${Number(row.total_return_pct).toFixed(2)}%`}
+                          <tr key={row.id} className={row.is_mine ? "lb-row--mine" : ""}>
+                            <td className="lb-td-mono">{rankCell(idx + 1)}</td>
+                            <td className="lb-td-mono">{row.strategy_label}</td>
+                            <td className="lb-td-mono">{row.ticker || "—"}</td>
+                            <td className="lb-td-mono">{fmtPeriod(row.period_start, row.period_end)}</td>
+                            <td className={`lb-td-key lb-td-center ${keyMetricClass(strategyLabCat, row.value)}`}>
+                              {row.value_label}
                             </td>
-                            <td className="mono sub">{row.sharpe_ratio == null ? "—" : Number(row.sharpe_ratio).toFixed(2)}</td>
-                            <td className="mono sub">{row.max_drawdown_pct == null ? "—" : `${Number(row.max_drawdown_pct).toFixed(2)}%`}</td>
-                            <td>
+                            <td className="lb-td-mono lb-td-right">{row.sharpe_ratio == null ? "—" : Number(row.sharpe_ratio).toFixed(2)}</td>
+                            <td className={`lb-td-mono lb-td-right ${row.max_drawdown_pct != null && row.max_drawdown_pct > 0 ? "lb-num-neg" : ""}`}>
+                              {row.max_drawdown_pct == null ? "—" : `${Number(row.max_drawdown_pct).toFixed(2)}%`}
+                            </td>
+                            <td className="lb-td-action">
                               <button type="button" className="lb-view-btn" onClick={() => setSelected(row.id)}>
                                 View
                               </button>

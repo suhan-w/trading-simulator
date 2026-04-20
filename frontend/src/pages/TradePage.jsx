@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import ExecuteTradeForm from "../components/ExecuteTradeForm";
-import ShareLeaderboardBanner from "../components/ShareLeaderboardBanner";
 import HistoricalStockPanel from "../components/HistoricalStockPanel";
 import CardHeaderTitle from "../components/CardHeaderTitle";
 import SectionHeading from "../components/SectionHeading";
@@ -97,9 +96,6 @@ export default function TradePage() {
   const [portfolioData, setPortfolioData] = useState(null);
   const [portfolioErr, setPortfolioErr] = useState(null);
   const [strategyReminder, setStrategyReminder] = useState("");
-  const [paperLbEntryId, setPaperLbEntryId] = useState(null);
-  const [paperSharePublic, setPaperSharePublic] = useState(false);
-  const [paperShareBusy, setPaperShareBusy] = useState(false);
 
   useEffect(() => {
     try {
@@ -124,27 +120,6 @@ export default function TradePage() {
     const id = setInterval(loadPortfolio, 45_000);
     return () => clearInterval(id);
   }, [user, loadPortfolio]);
-
-  const onPaperShareToggle = useCallback(async (next) => {
-    if (paperLbEntryId == null) return;
-    setPaperShareBusy(true);
-    try {
-      await api.patchLeaderboardEntry(paperLbEntryId, { share_public: next });
-      setPaperSharePublic(next);
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPaperShareBusy(false);
-    }
-  }, [paperLbEntryId]);
-
-  const onMarketFilled = useCallback((ord) => {
-    const id = ord?.paper_leaderboard_entry_id;
-    if (id != null) {
-      setPaperLbEntryId(id);
-      setPaperSharePublic(false);
-    }
-  }, []);
 
   const dismissStrategyReminder = useCallback(() => {
     try {
@@ -225,13 +200,7 @@ export default function TradePage() {
           )}
         </div>
         <div className="min-w-0 flex w-full flex-col gap-3">
-          <ExecuteTradeForm onQuoteSymbol={setChartSymbol} onMarketOrderFilled={onMarketFilled} />
-          <ShareLeaderboardBanner
-            entryId={paperLbEntryId}
-            sharePublic={paperSharePublic}
-            onChangeShare={(v) => void onPaperShareToggle(v)}
-            disabled={paperShareBusy}
-          />
+          <ExecuteTradeForm onQuoteSymbol={setChartSymbol} />
         </div>
       </div>
     </div>
