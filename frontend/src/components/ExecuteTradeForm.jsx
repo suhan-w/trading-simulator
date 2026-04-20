@@ -192,8 +192,9 @@ export default function ExecuteTradeForm({ onQuoteSymbol, onMarketOrderFilled })
 
       <div className="space-y-5 pt-2">
         <div>
-          <label className="cs-label mb-2">Ticker</label>
+          <label htmlFor="trade-ticker" className="cs-label mb-2">Ticker</label>
           <input
+            id="trade-ticker"
             type="text"
             value={ticker}
             onChange={(e) => {
@@ -212,14 +213,16 @@ export default function ExecuteTradeForm({ onQuoteSymbol, onMarketOrderFilled })
             placeholder="BHP or BHP.AX"
             className="cs-input-mono"
             autoComplete="off"
+            aria-describedby="trade-ticker-help"
           />
-          <p className="mt-1 text-[10px] font-mono text-muted">Press Enter or leave field to load last close.</p>
-          {quoteError && <p className="mt-2 text-xs font-mono font-semibold text-danger">{quoteError}</p>}
+          <p id="trade-ticker-help" className="mt-1 text-[10px] font-mono text-muted">Press Enter or leave field to load last close.</p>
+          {quoteError && <p className="mt-2 text-xs font-mono font-semibold text-danger" role="alert">{quoteError}</p>}
         </div>
 
         <div>
-          <label className="cs-label mb-2">Quantity (shares)</label>
+          <label htmlFor="trade-quantity" className="cs-label mb-2">Quantity (shares)</label>
           <input
+            id="trade-quantity"
             type="number"
             min="0"
             step="any"
@@ -232,10 +235,11 @@ export default function ExecuteTradeForm({ onQuoteSymbol, onMarketOrderFilled })
 
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="cs-label !mb-0">Last Close Price</span>
+            <label htmlFor="trade-last-close" className="cs-label !mb-0">Last Close Price</label>
             {quoteLoading && <QuoteSpinner />}
           </div>
           <input
+            id="trade-last-close"
             type="text"
             readOnly
             value={quoteLoading ? "" : quote != null ? `${formatAud(quote.price)} AUD` : "—"}
@@ -294,8 +298,8 @@ export default function ExecuteTradeForm({ onQuoteSymbol, onMarketOrderFilled })
             </GoldNotice>
           )}
 
-        {formError && <p className="text-sm font-mono font-semibold text-danger">{formError}</p>}
-        {success && <p className="text-sm font-mono font-semibold text-profit">{success}</p>}
+        {formError && <p className="text-sm font-mono font-semibold text-danger" role="alert">{formError}</p>}
+        {success && <p className="text-sm font-mono font-semibold text-profit" role="status">{success}</p>}
 
         <div className="flex gap-3">
           <button

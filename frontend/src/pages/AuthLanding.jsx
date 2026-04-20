@@ -93,8 +93,9 @@ export default function AuthLanding() {
         {mode === "register" ? (
           <form onSubmit={onRegister} className="cs-card space-y-4 p-5">
             <div>
-              <label className="cs-label mb-2">Email</label>
+              <label htmlFor="auth-register-email" className="cs-label mb-2">Email</label>
               <input
+                id="auth-register-email"
                 type="email"
                 required
                 value={email}
@@ -104,8 +105,9 @@ export default function AuthLanding() {
               />
             </div>
             <div>
-              <label className="cs-label mb-2">Password (min 8 characters)</label>
+              <label htmlFor="auth-register-password" className="cs-label mb-2">Password (min 8 characters)</label>
               <input
+                id="auth-register-password"
                 type="password"
                 required
                 minLength={8}
@@ -116,8 +118,9 @@ export default function AuthLanding() {
               />
             </div>
             <div>
-              <label className="cs-label mb-2">Alpha Vantage API key</label>
+              <label htmlFor="auth-register-apikey" className="cs-label mb-2">Alpha Vantage API key</label>
               <input
+                id="auth-register-apikey"
                 type="password"
                 required
                 minLength={8}
@@ -128,7 +131,7 @@ export default function AuthLanding() {
                 autoComplete="off"
               />
             </div>
-            {error && <p className="text-sm font-mono font-semibold text-danger">{error}</p>}
+            {error && <p className="text-sm font-mono font-semibold text-danger" role="alert">{error}</p>}
             <button type="submit" disabled={busy} className="cs-btn-buy w-full">
               {busy ? "Creating account…" : "Create account"}
             </button>
@@ -136,8 +139,9 @@ export default function AuthLanding() {
         ) : (
           <form onSubmit={onLogin} className="cs-card space-y-4 p-5">
             <div>
-              <label className="cs-label mb-2">Email</label>
+              <label htmlFor="auth-login-email" className="cs-label mb-2">Email</label>
               <input
+                id="auth-login-email"
                 type="email"
                 required
                 value={email}
@@ -147,8 +151,9 @@ export default function AuthLanding() {
               />
             </div>
             <div>
-              <label className="cs-label mb-2">Password</label>
+              <label htmlFor="auth-login-password" className="cs-label mb-2">Password</label>
               <input
+                id="auth-login-password"
                 type="password"
                 required
                 value={password}
@@ -157,7 +162,7 @@ export default function AuthLanding() {
                 autoComplete="current-password"
               />
             </div>
-            {error && <p className="text-sm font-mono font-semibold text-danger">{error}</p>}
+            {error && <p className="text-sm font-mono font-semibold text-danger" role="alert">{error}</p>}
             <button type="submit" disabled={busy} className="cs-btn-buy w-full">
               {busy ? "Signing in…" : "Log in"}
             </button>

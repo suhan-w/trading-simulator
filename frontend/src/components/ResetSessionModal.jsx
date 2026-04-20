@@ -1,10 +1,36 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Confirm irreversible reset of the current user's simulation data.
+ *
+ * Token-compliant reference implementation:
+ *   - No inline styles; every visual uses the cs-* primitive layer or tokens.
+ *   - Moves initial focus to Cancel on open and restores focus to the
+ *     previously-focused element on close.
+ *   - ESC closes when not busy.
+ *
  * @param {{ open: boolean, onClose: () => void, onConfirm: () => Promise<void>, busy?: boolean }} props
  */
 export default function ResetSessionModal({ open, onClose, onConfirm, busy = false }) {
+  const cancelRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
+
+  // Remember the trigger element so we can restore focus on close.
+  useEffect(() => {
+    if (open) {
+      previouslyFocusedRef.current = document.activeElement;
+      // Defer focus until after render so the button exists.
+      queueMicrotask(() => cancelRef.current?.focus());
+      return undefined;
+    }
+    const prev = previouslyFocusedRef.current;
+    if (prev && typeof prev.focus === "function") {
+      prev.focus();
+    }
+    return undefined;
+  }, [open]);
+
+  // ESC to dismiss (ignored while busy to avoid losing an in-flight confirm).
   useEffect(() => {
     if (!open || busy) return undefined;
     const onKey = (e) => {
@@ -16,68 +42,33 @@ export default function ResetSessionModal({ open, onClose, onConfirm, busy = fal
 
   if (!open) return null;
 
-  const panelStyle = {
-    backgroundColor: "#ffffff",
-    borderRadius: "16px",
-    padding: "32px",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-  };
-
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
+      className="cs-modal-overlay"
       onClick={busy ? undefined : onClose}
       role="presentation"
     >
       <div
-        className="w-full max-w-md"
-        style={panelStyle}
+        className="cs-modal-panel max-w-md"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="reset-session-title"
+        aria-describedby="reset-session-desc"
       >
-        <h2
-          id="reset-session-title"
-          className="m-0 flex items-center gap-2 font-medium leading-tight tracking-tight"
-          style={{ fontSize: "18px", fontWeight: 500, color: "#111111" }}
-        >
-          <span
-            className="shrink-0"
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "1px",
-              backgroundColor: "#c8963e",
-            }}
-            aria-hidden
-          />
+        <h2 id="reset-session-title" className="cs-modal-title">
+          <span className="cs-modal-title-dot" aria-hidden />
           New Session
         </h2>
-        <p
-          className="m-0 mt-5 font-normal"
-          style={{
-            fontSize: "13px",
-            lineHeight: 1.7,
-            color: "#666666",
-          }}
-        >
+        <p id="reset-session-desc" className="cs-modal-body">
           Are you sure? This will delete all your trades, holdings and performance history and reset your cash to
           A$100,000. This cannot be undone.
         </p>
-        <div className="mt-8 flex flex-wrap justify-end gap-2">
+        <div className="cs-modal-footer">
           <button
+            ref={cancelRef}
             type="button"
-            className="cursor-pointer font-normal transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8963e]/35 focus-visible:ring-offset-2"
-            style={{
-              backgroundColor: "#ffffff",
-              border: "1px solid #ede9e3",
-              borderRadius: "10px",
-              padding: "10px 20px",
-              fontSize: "13px",
-              color: "#111111",
-            }}
+            className="cs-btn-ghost"
             disabled={busy}
             onClick={onClose}
           >
@@ -85,16 +76,7 @@ export default function ResetSessionModal({ open, onClose, onConfirm, busy = fal
           </button>
           <button
             type="button"
-            className="cursor-pointer font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c0392b]/30 focus-visible:ring-offset-2"
-            style={{
-              backgroundColor: "#ffffff",
-              border: "1.5px solid #c0392b",
-              borderRadius: "10px",
-              padding: "10px 20px",
-              fontSize: "13px",
-              fontWeight: 500,
-              color: "#c0392b",
-            }}
+            className="cs-btn-danger-outline"
             disabled={busy}
             onClick={() => void onConfirm()}
           >

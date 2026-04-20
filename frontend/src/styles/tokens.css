@@ -1,0 +1,9 @@
+@layer base {
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: #f5f3ef;
+    color: #111111;
+    font-feature-settings: "tnum" 1;
+  }
+}

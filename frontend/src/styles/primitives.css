@@ -1,0 +1,424 @@
+@layer components {
+  .cs-card {
+    @apply rounded-card bg-card shadow-card;
+  }
+
+  .cs-card-header {
+    @apply px-5 py-4;
+  }
+
+  .cs-metric {
+    @apply rounded-card bg-card p-5 shadow-card;
+  }
+
+  .cs-metric-featured {
+    @apply rounded-card bg-card p-5 shadow-card border-b-4 border-gold;
+  }
+
+  .cs-page-title {
+    @apply text-xl font-semibold tracking-tight text-ink;
+  }
+
+  .cs-page-desc {
+    @apply mt-1 text-sm text-muted leading-relaxed max-w-2xl;
+  }
+
+  /* Page headings (Portfolio, Trade, Performance, Account) */
+  .page-section-heading {
+    @apply w-full max-w-full min-w-0;
+  }
+
+  .page-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  .page-title {
+    margin: 0;
+    font-size: 1.875rem;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #111111;
+    letter-spacing: -0.02em;
+    text-transform: capitalize;
+  }
+
+  .page-subtitle {
+    margin: 0;
+    margin-top: 8px;
+    font-size: 0.875rem;
+    line-height: 1.35;
+    color: #aaaaaa;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  /* Card / panel titles */
+  .card-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  .card-title {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.35;
+    font-weight: 500;
+    color: #111111;
+    text-transform: capitalize;
+  }
+
+  .card-subtitle {
+    margin: 0;
+    margin-bottom: 16px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #aaaaaa;
+  }
+
+  .pixel-tooltip-btn {
+    width: 8px;
+    height: 8px;
+    margin-left: 8px;
+    padding: 0;
+    border: none;
+    background: #c8963e;
+    display: inline-block;
+    cursor: pointer;
+    flex-shrink: 0;
+    vertical-align: middle;
+    border-radius: 1px;
+    position: relative;
+  }
+
+  .pixel-tooltip-btn:hover {
+    filter: brightness(0.98);
+  }
+
+  .pixel-tooltip-btn:focus-visible {
+    outline: 2px solid rgba(200, 150, 62, 0.45);
+    outline-offset: 3px;
+  }
+
+  /* Hover / focus tooltip popover (used on titles) */
+  .pixel-tooltip-btn[data-tooltip]::before,
+  .pixel-tooltip-btn[data-tooltip]::after {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease, transform 120ms ease;
+    z-index: 60;
+  }
+
+  .pixel-tooltip-btn[data-tooltip]::before {
+    content: "";
+    top: -10px;
+    transform: translateX(-50%) translateY(-2px);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 7px solid #111;
+  }
+
+  .pixel-tooltip-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    top: -16px;
+    transform: translateX(-50%) translateY(-6px);
+    background: #111;
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 8px 10px;
+    border-radius: 10px;
+    max-width: min(320px, 70vw);
+    width: max-content;
+    white-space: normal;
+    box-shadow: 0 10px 24px rgba(17, 17, 17, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .pixel-tooltip-btn[data-tooltip]:hover::before,
+  .pixel-tooltip-btn[data-tooltip]:hover::after,
+  .pixel-tooltip-btn[data-tooltip]:focus-visible::before,
+  .pixel-tooltip-btn[data-tooltip]:focus-visible::after {
+    opacity: 1;
+  }
+
+  .pixel-tooltip-btn[data-tooltip]:hover::before,
+  .pixel-tooltip-btn[data-tooltip]:focus-visible::before {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .pixel-tooltip-btn[data-tooltip]:hover::after,
+  .pixel-tooltip-btn[data-tooltip]:focus-visible::after {
+    transform: translateX(-50%) translateY(-10px);
+  }
+
+  .pixel-tooltip-text {
+    font-size: 12px;
+    line-height: 1.45;
+    color: #888888;
+    background: #fdf8f0;
+    border-left: 2px solid #c8963e;
+    padding: 8px 12px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* Metric strip fits the chart column: no horizontal scroll; type scales with strip width */
+  .metric-strip-container {
+    container-type: inline-size;
+    container-name: metricstrip;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .metric-strip-card {
+    container-type: inline-size;
+    container-name: metriccard;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-self: stretch;
+    gap: clamp(2px, 0.5cqi, 6px);
+    padding: clamp(11px, 2.75cqi, 16px);
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #ede9e3;
+    box-shadow: none;
+    min-width: 0;
+    min-height: clamp(4.5rem, 21cqw, 5.25rem);
+    overflow: hidden;
+  }
+
+  .metric-strip-card--featured {
+    border-bottom-width: 3px;
+    border-bottom-color: #c8963e;
+  }
+
+  .metric-strip-label {
+    flex-shrink: 0;
+    align-self: stretch;
+    margin: 0;
+    padding: 0;
+    font-family: Inter, system-ui, sans-serif;
+    font-size: clamp(10px, 2.85cqi, 12px);
+    font-weight: 500;
+    line-height: 1.35;
+    text-transform: uppercase;
+    letter-spacing: clamp(0.3px, 0.22cqi, 0.8px);
+    color: #bbbbbb;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  .metric-strip-value {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    margin: 0;
+    /* Nudge figures slightly below vertical centre while staying inside the card */
+    padding-top: clamp(10px, 1.65cqi, 18px);
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    white-space: nowrap;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    /* Larger bold figures; still scales with card (cqw) so rows stay inside each card */
+    font-size: clamp(1rem, 13.5cqw, 1.6875rem);
+    line-height: 1.2;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    /* One line: if the figure is wider than the card, scroll inside this row only */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .metric-strip-value--cash {
+    color: #111111;
+  }
+
+  .metric-strip-value--gold {
+    color: #c8963e;
+  }
+
+  .metric-strip-value--profit {
+    color: #2d8a55;
+  }
+
+  .metric-strip-value--danger {
+    color: #c0392b;
+  }
+
+  .metric-strip-value--neutral {
+    color: #111111;
+  }
+
+  .cs-label {
+    @apply block text-[11px] font-semibold uppercase tracking-wider text-muted;
+  }
+
+  .cs-input {
+    @apply w-full rounded-card bg-card px-4 py-3 text-sm font-mono tabular-nums text-ink shadow-card-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-gold/30;
+  }
+
+  .cs-input-mono {
+    @apply cs-input;
+  }
+
+  .cs-btn-buy {
+    @apply rounded-card bg-ink px-5 py-3.5 text-sm font-semibold text-white shadow-card-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .cs-btn-sell {
+    @apply rounded-card border-2 border-danger bg-card px-5 py-3.5 text-sm font-semibold text-danger shadow-card-sm transition-colors hover:bg-danger/[0.04] disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .cs-btn-side {
+    @apply flex-1 rounded-card border border-ink bg-card py-3.5 text-sm font-semibold text-ink shadow-card-sm transition-all;
+  }
+
+  .cs-btn-side-active {
+    @apply ring-2 ring-ink ring-offset-2 ring-offset-white;
+  }
+
+  .cs-btn-neutral {
+    @apply rounded-card border border-ink/10 bg-card px-4 py-2 text-xs font-semibold text-muted shadow-card-sm transition-colors hover:border-ink/20 hover:text-ink;
+  }
+
+  .cs-btn-gold {
+    @apply rounded-card bg-gold px-5 py-3.5 text-sm font-semibold text-white shadow-card-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .cs-btn-ghost {
+    @apply rounded-soft border border-beige-200 bg-card px-5 py-2.5 text-[13px] text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/35 focus-visible:ring-offset-2;
+  }
+
+  .cs-btn-danger-outline {
+    @apply rounded-soft border-2 border-danger bg-card px-5 py-2.5 text-[13px] font-medium text-danger transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger/30 focus-visible:ring-offset-2;
+  }
+
+  .cs-gold-notice {
+    @apply flex flex-col gap-1 rounded-card border border-gold/35 bg-gold/10 p-4 text-center text-xs font-mono text-ink;
+  }
+
+  /* Modal primitives — use for any new dialog/drawer. */
+  .cs-modal-overlay {
+    @apply fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4;
+  }
+
+  .cs-modal-panel {
+    @apply w-full rounded-2xl bg-card p-8 shadow-modal focus:outline-none;
+  }
+
+  .cs-modal-title {
+    @apply m-0 flex items-center gap-2 text-lg font-medium leading-tight tracking-tight text-ink;
+  }
+
+  .cs-modal-title-dot {
+    @apply h-2 w-2 shrink-0 rounded-[1px] bg-gold;
+  }
+
+  .cs-modal-body {
+    @apply m-0 mt-5 text-[13px] leading-[1.7] text-grey-600;
+  }
+
+  .cs-modal-footer {
+    @apply mt-8 flex flex-wrap justify-end gap-2;
+  }
+
+  .account-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .account-layout .profile-card {
+    grid-column: 1;
+  }
+
+  .account-layout .api-card {
+    grid-column: 2;
+  }
+
+  .account-layout .simulator-card {
+    grid-column: 1 / -1;
+  }
+
+  .portfolio-layout {
+    --portfolio-layout-gap: 24px;
+    display: grid;
+    grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+    gap: var(--portfolio-layout-gap);
+    align-items: stretch;
+  }
+
+  .portfolio-layout > * {
+    min-width: 0;
+  }
+
+  /* Four columns when wide; 2×2 when strip is too narrow for four readable amounts */
+  .portfolio-metric-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: clamp(6px, 1.2cqi, 12px);
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+  }
+
+  @container metricstrip (max-width: 36rem) {
+    .portfolio-metric-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container metricstrip (max-width: 20rem) {
+    .portfolio-metric-strip {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Narrow column (allocation + pie): stretches to align with chart column */
+  .portfolio-left-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--portfolio-layout-gap);
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  .portfolio-chart-cell {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* Wider column = historical chart / OHLCV + holdings; narrower = execute trade form */
+  .trade-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+    gap: 24px;
+    /* Left column height follows content; do not stretch to match the trade form */
+    align-items: start;
+  }
+
+  .trade-layout > * {
+    min-width: 0;
+  }
+
+}
