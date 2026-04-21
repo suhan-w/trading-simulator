@@ -79,6 +79,36 @@ def public_in_range(db: Session, range_start: date, range_end: date):
     )
 
 
+def _normalize_strategy_text(raw: str | None) -> str:
+    return (raw or "").replace("\r\n", "\n").strip()
+
+
+def _strategy_dedupe_key(entry: LeaderboardEntry) -> tuple[str, str] | None:
+    code = _normalize_strategy_text(entry.strategy_code)
+    if code:
+        return ("code", code)
+    visual = _normalize_strategy_text(entry.strategy_visual_json)
+    if visual:
+        return ("visual", visual)
+    return None
+
+
+def public_distinct_in_range(db: Session, range_start: date, range_end: date) -> list[LeaderboardEntry]:
+    rows = public_in_range(db, range_start, range_end).order_by(LeaderboardEntry.id.desc()).all()
+    out: list[LeaderboardEntry] = []
+    seen: set[tuple[str, str]] = set()
+    for e in rows:
+        k = _strategy_dedupe_key(e)
+        if k is None:
+            out.append(e)
+            continue
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(e)
+    return out
+
+
 def create_backtest_entry(
     db: Session,
     user_id: int,
@@ -213,61 +243,51 @@ def ensure_paper_leaderboard_row(db: Session, user: User) -> LeaderboardEntry:
 
 
 def count_public_distinct_strategies(db: Session, range_start: date, range_end: date) -> int:
-    q = public_in_range(db, range_start, range_end)
-    return int(q.with_entities(func.count(LeaderboardEntry.id)).scalar() or 0)
+    return len(public_distinct_in_range(db, range_start, range_end))
 
 
 def _rank_return(entry: LeaderboardEntry, db: Session, range_start: date, range_end: date) -> int:
-    q = public_in_range(db, range_start, range_end)
-    better = q.filter(LeaderboardEntry.total_return_pct > entry.total_return_pct + 1e-12).count()
+    rows = public_distinct_in_range(db, range_start, range_end)
+    better = sum(1 for r in rows if float(r.total_return_pct) > float(entry.total_return_pct) + 1e-12)
     return better + 1
 
 
 def _rank_sharpe(entry: LeaderboardEntry, db: Session, range_start: date, range_end: date) -> int:
-    q = public_in_range(db, range_start, range_end)
+    rows = public_distinct_in_range(db, range_start, range_end)
     if entry.sharpe_ratio is None:
-        better = q.filter(LeaderboardEntry.sharpe_ratio.isnot(None)).count()
+        better = sum(1 for r in rows if r.sharpe_ratio is not None)
     else:
         es = float(entry.sharpe_ratio)
-        better = q.filter(
-            LeaderboardEntry.sharpe_ratio.isnot(None),
-            LeaderboardEntry.sharpe_ratio > es + 1e-12,
-        ).count()
-        better += q.filter(LeaderboardEntry.sharpe_ratio.is_(None)).count()
+        better = sum(1 for r in rows if r.sharpe_ratio is not None and float(r.sharpe_ratio) > es + 1e-12)
+        better += sum(1 for r in rows if r.sharpe_ratio is None)
     return better + 1
 
 
 def _rank_drawdown(entry: LeaderboardEntry, db: Session, range_start: date, range_end: date) -> int:
-    q = public_in_range(db, range_start, range_end)
+    rows = public_distinct_in_range(db, range_start, range_end)
     if entry.max_drawdown_pct is None:
-        better = q.filter(LeaderboardEntry.max_drawdown_pct.isnot(None)).count()
+        better = sum(1 for r in rows if r.max_drawdown_pct is not None)
     else:
         ed = float(entry.max_drawdown_pct)
-        better = q.filter(
-            LeaderboardEntry.max_drawdown_pct.isnot(None),
-            LeaderboardEntry.max_drawdown_pct < ed - 1e-12,
-        ).count()
-        better += q.filter(LeaderboardEntry.max_drawdown_pct.is_(None)).count()
+        better = sum(1 for r in rows if r.max_drawdown_pct is not None and float(r.max_drawdown_pct) < ed - 1e-12)
+        better += sum(1 for r in rows if r.max_drawdown_pct is None)
     return better + 1
 
 
 def _rank_trades(entry: LeaderboardEntry, db: Session, range_start: date, range_end: date) -> int:
-    q = public_in_range(db, range_start, range_end)
-    better = q.filter(LeaderboardEntry.trade_count > entry.trade_count).count()
+    rows = public_distinct_in_range(db, range_start, range_end)
+    better = sum(1 for r in rows if int(r.trade_count) > int(entry.trade_count))
     return better + 1
 
 
 def _rank_winrate(entry: LeaderboardEntry, db: Session, range_start: date, range_end: date) -> int:
-    q = public_in_range(db, range_start, range_end)
+    rows = public_distinct_in_range(db, range_start, range_end)
     if entry.win_rate_pct is None:
-        better = q.filter(LeaderboardEntry.win_rate_pct.isnot(None)).count()
+        better = sum(1 for r in rows if r.win_rate_pct is not None)
     else:
         ew = float(entry.win_rate_pct)
-        better = q.filter(
-            LeaderboardEntry.win_rate_pct.isnot(None),
-            LeaderboardEntry.win_rate_pct > ew + 1e-12,
-        ).count()
-        better += q.filter(LeaderboardEntry.win_rate_pct.is_(None)).count()
+        better = sum(1 for r in rows if r.win_rate_pct is not None and float(r.win_rate_pct) > ew + 1e-12)
+        better += sum(1 for r in rows if r.win_rate_pct is None)
     return better + 1
 
 
@@ -291,17 +311,7 @@ _CAT_LABELS = {
 def my_best_rank_summary(
     db: Session, user_id: int, range_start: date, range_end: date
 ) -> dict[str, Any] | None:
-    entries = (
-        _overlap(
-            db.query(LeaderboardEntry).filter(
-                LeaderboardEntry.user_id == user_id,
-                LeaderboardEntry.share_public.is_(True),
-            ),
-            range_start,
-            range_end,
-        )
-        .all()
-    )
+    entries = [e for e in public_distinct_in_range(db, range_start, range_end) if e.user_id == user_id]
     if not entries:
         return None
     best_rank: int | None = None
@@ -327,29 +337,38 @@ def my_best_rank_summary(
 def top_for_category(
     db: Session, range_start: date, range_end: date, category: str, limit: int = 10
 ) -> list[LeaderboardEntry]:
-    q = public_in_range(db, range_start, range_end)
+    rows = public_distinct_in_range(db, range_start, range_end)
     if category == "return":
-        q = q.order_by(LeaderboardEntry.total_return_pct.desc(), LeaderboardEntry.id.asc())
+        rows = sorted(rows, key=lambda e: (-float(e.total_return_pct), int(e.id)))
     elif category == "sharpe":
-        q = q.order_by(
-            func.coalesce(LeaderboardEntry.sharpe_ratio, -1e9).desc(),
-            LeaderboardEntry.id.asc(),
+        rows = sorted(
+            rows,
+            key=lambda e: (
+                -float(e.sharpe_ratio) if e.sharpe_ratio is not None else 1e9,
+                int(e.id),
+            ),
         )
     elif category == "drawdown":
-        q = q.order_by(
-            func.coalesce(LeaderboardEntry.max_drawdown_pct, 1e9).asc(),
-            LeaderboardEntry.id.asc(),
+        rows = sorted(
+            rows,
+            key=lambda e: (
+                float(e.max_drawdown_pct) if e.max_drawdown_pct is not None else 1e9,
+                int(e.id),
+            ),
         )
     elif category == "trades":
-        q = q.order_by(LeaderboardEntry.trade_count.desc(), LeaderboardEntry.id.asc())
+        rows = sorted(rows, key=lambda e: (-int(e.trade_count), int(e.id)))
     elif category == "winrate":
-        q = q.order_by(
-            func.coalesce(LeaderboardEntry.win_rate_pct, -1.0).desc(),
-            LeaderboardEntry.id.asc(),
+        rows = sorted(
+            rows,
+            key=lambda e: (
+                -float(e.win_rate_pct) if e.win_rate_pct is not None else 1e9,
+                int(e.id),
+            ),
         )
     else:
         return []
-    return q.limit(limit).all()
+    return rows[:limit]
 
 
 def entry_detail_public(db: Session, entry_id: int) -> LeaderboardEntry | None:

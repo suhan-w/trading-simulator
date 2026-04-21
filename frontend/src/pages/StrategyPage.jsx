@@ -34,8 +34,6 @@ export default function StrategyPage() {
   const [code, setCode] = useState(EXAMPLE_MA_CROSSOVER);
   const [codeImportVersion, setCodeImportVersion] = useState(0);
   const strategyBuilderRef = useRef(null);
-  // Legacy: visual block import is no longer supported in the rule builder.
-  const [basketOpen, setBasketOpen] = useState(true);
   const [savedStrategies, setSavedStrategies] = useState(() => loadVisualStrategies());
   const [activeStrategyName, setActiveStrategyName] = useState("Untitled strategy");
   const extensions = useMemo(() => [python(), cowrieEditorTheme], []);
@@ -77,25 +75,27 @@ export default function StrategyPage() {
 
   const saveCurrentStrategy = useCallback(() => {
     const builder = strategyBuilderRef.current;
-    if (!builder?.getBuilderMode) {
-      window.alert("Strategy builder not ready.");
-      return;
+    if (!builder) {
+      return { ok: false, reason: "Strategy builder not ready." };
     }
-    const mode = builder.getBuilderMode();
-    const rules = mode === "advanced" ? builder.getAdvancedRules?.() : builder.getSimpleRules?.();
+    const mode = builder.getBuilderMode?.() || "unified";
+    const rules = builder.getRules?.() || (mode === "advanced" ? builder.getAdvancedRules?.() : builder.getSimpleRules?.());
     if (!Array.isArray(rules) || rules.length === 0) {
-      window.alert("Add at least one rule before saving.");
-      return;
+      return { ok: false, reason: "Add at least one rule before saving." };
     }
     if (savedStrategies.length >= VISUAL_SAVED_STRATEGIES_MAX) {
-      window.alert(`You can save at most ${VISUAL_SAVED_STRATEGIES_MAX} strategies. Remove one first.`);
-      return;
+      return { ok: false, reason: `You can save at most ${VISUAL_SAVED_STRATEGIES_MAX} strategies. Remove one first.` };
     }
-    const defaultName = `Strategy ${savedStrategies.length + 1}`;
-    const title = window.prompt("Name this strategy:", defaultName);
-    if (title == null) return;
-    const trimmed = title.trim();
-    if (!trimmed) return;
+    const baseName = activeStrategyName && activeStrategyName !== "Untitled strategy"
+      ? activeStrategyName
+      : `Strategy ${savedStrategies.length + 1}`;
+    const existing = new Set(savedStrategies.map((s) => (s.title || "").trim().toLowerCase()));
+    let trimmed = baseName.trim();
+    if (existing.has(trimmed.toLowerCase())) {
+      let n = 2;
+      while (existing.has(`${trimmed} (${n})`.toLowerCase())) n += 1;
+      trimmed = `${trimmed} (${n})`;
+    }
     const id =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `vs-${Date.now()}`;
     const next = [
@@ -105,35 +105,8 @@ export default function StrategyPage() {
     setSavedStrategies(next);
     saveVisualStrategies(next);
     setActiveStrategyName(trimmed);
-  }, [savedStrategies]);
-
-  const removeSavedStrategy = useCallback(
-    (id) => {
-      const victim = savedStrategies.find((x) => x.id === id);
-      if (!victim) return;
-      if (!window.confirm(`Remove saved strategy "${victim.title}"?`)) return;
-      const next = savedStrategies.filter((x) => x.id !== id);
-      setSavedStrategies(next);
-      saveVisualStrategies(next);
-    },
-    [savedStrategies]
-  );
-
-  const loadSavedStrategy = useCallback((item) => {
-    const builder = strategyBuilderRef.current;
-    if (!builder?.importSimpleRules || !builder?.importAdvancedRules) return;
-    if (item?.builderMode === "advanced") builder.importAdvancedRules(item?.rules || []);
-    else builder.importSimpleRules(item?.rules || []);
-    setActiveStrategyName(item.title);
-    setBasketOpen(false);
-  }, []);
-
-  const applyTemplate = useCallback((key, name) => {
-    const builder = strategyBuilderRef.current;
-    if (!builder?.applyTemplate) return;
-    builder.applyTemplate(key);
-    setActiveStrategyName(name);
-  }, []);
+    return { ok: true, title: trimmed };
+  }, [savedStrategies, activeStrategyName]);
 
   useEffect(() => {
     if (!editorExpanded && !canvasExpanded) return undefined;
@@ -185,97 +158,11 @@ export default function StrategyPage() {
         hideDataConfigFields
         hideSavedStrategiesToolbar
         autoSyncCodeFromVisual
-        renderLayout={({ modeTabs, palette, panel }) => (
+        onOpenBacktesting={openBacktesting}
+        onSaveStrategy={saveCurrentStrategy}
+        renderLayout={({ panel }) => (
           <div className="strategy-page">
-            <div className="strategy-page-left">{palette}</div>
-            <div className="strategy-page-right">
-              {modeTabs}
-              {panel}
-
-              <div className="strategy-basket-card">
-                <button
-                  type="button"
-                  className="strategy-basket-toggle"
-                  onClick={() => setBasketOpen((v) => !v)}
-                  aria-expanded={basketOpen}
-                  aria-controls="strategy-basket-panel"
-                  id="strategy-basket-toggle"
-                >
-                  <span className="text-sm font-semibold text-ink">Strategy Basket</span>
-                  <span className="font-mono text-sm font-medium text-muted" aria-hidden>
-                    {basketOpen ? "−" : "+"}
-                  </span>
-                </button>
-                {basketOpen ? (
-                  <div
-                    id="strategy-basket-panel"
-                    role="region"
-                    aria-labelledby="strategy-basket-toggle"
-                    className="strategy-basket-panel"
-                  >
-                    <div className="space-y-2">
-                      <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Save strategy</p>
-                      <button type="button" className="strategy-basket-save" onClick={saveCurrentStrategy}>
-                        Save current strategy…
-                      </button>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Built-in templates</p>
-                      <div className="backtest-example-pills">
-                        <button type="button" className="strategy-pill" onClick={() => applyTemplate("ma", "Moving Average Crossover")}>
-                          Moving Average Crossover
-                        </button>
-                        <button type="button" className="strategy-pill" onClick={() => applyTemplate("rsi", "RSI Overbought/Oversold")}>
-                          RSI Overbought/Oversold
-                        </button>
-                        <button type="button" className="strategy-pill" onClick={() => applyTemplate("bh", "Buy and Hold")}>
-                          Buy and Hold
-                        </button>
-                      </div>
-                    </div>
-
-                    {savedStrategies.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Saved strategies</p>
-                        <div className="backtest-example-pills">
-                          {savedStrategies.map((item) => (
-                            <div key={item.id} className="strategy-pill-row">
-                              <button type="button" className="strategy-pill strategy-pill--saved" onClick={() => loadSavedStrategy(item)}>
-                                {item.title}
-                              </button>
-                              <button
-                                type="button"
-                                className="strategy-pill-remove"
-                                aria-label={`Remove ${item.title}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeSavedStrategy(item.id);
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="strategy-handoff-card">
-                <div>
-                  <p className="m-0 text-[15px] font-medium text-ink">Ready to test?</p>
-                  <p className="m-0 mt-1 text-[12px] text-muted">
-                    Send this strategy to Backtesting to run against historical data.
-                  </p>
-                </div>
-                <button type="button" className="strategy-handoff-btn" onClick={openBacktesting}>
-                  Open in Backtesting →
-                </button>
-              </div>
-            </div>
+            <div className="strategy-page-right">{panel}</div>
           </div>
         )}
       />

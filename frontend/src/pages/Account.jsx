@@ -298,43 +298,50 @@ export default function Account() {
                 You can switch anytime. If you have not traded yet, a paper leaderboard row is created when you save your
                 choice so your preference is remembered. You can also use the toggle on the Backtesting page.
               </p>
-              <fieldset
-                className="account-lb-fieldset"
-                disabled={paperShareBusy}
-                aria-busy={paperShareBusy}
-              >
-                <legend className="sr-only">Paper account visibility on leaderboards</legend>
-                <label
-                  className={`account-lb-option ${!(paperLbEntry?.share_public ?? false) ? "account-lb-option--selected" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    name="account-lb-visibility"
-                    className="sr-only"
-                    checked={!(paperLbEntry?.share_public ?? false)}
-                    onChange={() => void onPaperShareToggle(false)}
-                  />
-                  <span className="account-lb-option-title">Private account</span>
-                  <span className="account-lb-option-desc">
-                    Your paper results are not shown on community leaderboards.
-                  </span>
-                </label>
-                <label
-                  className={`account-lb-option ${paperLbEntry?.share_public ? "account-lb-option--selected" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    name="account-lb-visibility"
-                    className="sr-only"
-                    checked={Boolean(paperLbEntry?.share_public)}
-                    onChange={() => void onPaperShareToggle(true)}
-                  />
-                  <span className="account-lb-option-title">Public account</span>
-                  <span className="account-lb-option-desc">
-                    Your paper row can appear on leaderboards anonymously (no username).
-                  </span>
-                </label>
-              </fieldset>
+              <div className="space-y-3" role="group" aria-label="Paper account visibility on leaderboards">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={paperShareBusy}
+                    aria-pressed={!(paperLbEntry?.share_public ?? false)}
+                    onClick={() => void onPaperShareToggle(false)}
+                    className={`rounded-card border px-4 py-3 text-left transition-colors ${
+                      !(paperLbEntry?.share_public ?? false)
+                        ? "border-ink bg-ink text-white"
+                        : "border-border bg-card text-ink hover:border-ink/50"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <span className="block text-sm font-semibold">Private account</span>
+                    <span
+                      className={`mt-1 block text-xs leading-relaxed ${
+                        !(paperLbEntry?.share_public ?? false) ? "text-white/90" : "text-muted"
+                      }`}
+                    >
+                      Your paper results are not shown on community leaderboards.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={paperShareBusy}
+                    aria-pressed={Boolean(paperLbEntry?.share_public)}
+                    onClick={() => void onPaperShareToggle(true)}
+                    className={`rounded-card border px-4 py-3 text-left transition-colors ${
+                      paperLbEntry?.share_public
+                        ? "border-gold bg-gold/15 text-ink"
+                        : "border-border bg-card text-ink hover:border-gold/60"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <span className="block text-sm font-semibold">Public account</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-muted">
+                      Your paper row can appear on leaderboards anonymously (no username).
+                    </span>
+                  </button>
+                </div>
+                <p className="text-xs font-mono text-muted">
+                  Current setting: {paperLbEntry?.share_public ? "Public" : "Private"}
+                  {paperShareBusy ? " (saving...)" : ""}
+                </p>
+              </div>
             </>
           )}
         </div>

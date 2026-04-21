@@ -9,6 +9,24 @@ import {
   parsePaletteDragType,
   shouldAppendConditionFromPalette,
 } from "../../utils/paletteDropMap";
+import { conditionIdFromLabel, indicatorTypeFor } from "../../constants/indicatorTypes";
+
+function condValidation(cond) {
+  const type = indicatorTypeFor(cond.ind);
+  const conditionId = conditionIdFromLabel(cond.op);
+  const isTwoCross = conditionId === "two_indicators_cross";
+  const needsBand = type === "band" && conditionId !== "price_inside_band";
+  const needsValue = conditionId !== "price_inside_band" && conditionId !== "two_indicators_cross";
+  const hasValue = cond.val !== null && cond.val !== undefined && String(cond.val).trim() !== "";
+  if (!cond.ind || !cond.op) return { incomplete: true, invalid: false, message: "" };
+  if (needsBand && !cond.bandSelection) return { incomplete: true, invalid: false, message: "" };
+  if (isTwoCross && !String(cond.secondIndicator || "").trim()) return { incomplete: true, invalid: false, message: "" };
+  if (needsValue && !hasValue) return { incomplete: true, invalid: false, message: "" };
+  if (isTwoCross && indicatorTypeFor(cond.secondIndicator) !== "line") {
+    return { incomplete: false, invalid: true, message: "Two indicators cross requires a Line-type second indicator." };
+  }
+  return { incomplete: false, invalid: false, message: "" };
+}
 
 const TYPE_META = {
   entry: { dot: "#2d8a55", bg: "#eaf3de", tc: "#27500a", label: "Entry" },
@@ -16,7 +34,8 @@ const TYPE_META = {
   risk: { dot: "#888780", bg: "#f1efe8", tc: "#5f5e5a", label: "Risk" },
 };
 
-function StepConditions({ step, onChange }) {
+function StepConditions({ step, onChange, variables = [] }) {
+  const validations = step.conds.map(condValidation);
   const [whenDragOver, setWhenDragOver] = useState(false);
 
   function updateCond(condId, field, value) {
@@ -35,7 +54,7 @@ function StepConditions({ step, onChange }) {
   function addCond() {
     onChange({
       ...step,
-      conds: [...step.conds, makeCondition({ ind: "RSI(14)", op: "is above", val: "50", joiner: "AND" })],
+      conds: [...step.conds, makeCondition({ ind: "RSI", op: "is above", val: "50", joiner: "AND" })],
     });
   }
 
@@ -48,10 +67,24 @@ function StepConditions({ step, onChange }) {
     });
   }
 
+  function applyPatchToPrimaryCond(blockType) {
+    const patch = conditionPatchFromPaletteBlock(blockType);
+    if (!patch) return false;
+    if (!step.conds.length) {
+      onChange({ ...step, conds: [makeCondition({ ...patch, joiner: "AND" })] });
+      return true;
+    }
+    const firstId = step.conds[0].id;
+    onChange({
+      ...step,
+      conds: step.conds.map((c) => (c.id === firstId ? { ...c, ...patch } : c)),
+    });
+    return true;
+  }
+
   function onWhenDragOver(e) {
-    if (!dataTransferHasCowriePalette(e.dataTransfer)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
+    if (dataTransferHasCowriePalette(e.dataTransfer)) e.dataTransfer.dropEffect = "copy";
     setWhenDragOver(true);
   }
 
@@ -60,7 +93,8 @@ function StepConditions({ step, onChange }) {
     setWhenDragOver(false);
     const t = parsePaletteDragType(e.dataTransfer);
     if (!t || !shouldAppendConditionFromPalette(t)) return;
-    appendFromPalette(t);
+    // Match user expectation: dropped block updates the visible condition row.
+    if (!applyPatchToPrimaryCond(t)) appendFromPalette(t);
   }
 
   return (
@@ -85,6 +119,8 @@ function StepConditions({ step, onChange }) {
             onChange={(f, v) => updateCond(cond.id, f, v)}
             onDelete={() => deleteCond(cond.id)}
             showDelete={step.conds.length > 1}
+            errorMessage={validations[ci]?.invalid ? validations[ci].message : ""}
+            variables={variables}
           />
         </div>
       ))}
@@ -112,10 +148,27 @@ function StepConditions({ step, onChange }) {
   );
 }
 
-export default function AdvancedRuleCard({ rule, index, onChange, onDelete }) {
+function advancedRuleReading(rule) {
+  const c = rule.steps?.[0]?.conds?.[0];
+  if (!c || !c.ind || !c.op) return "Complete the rule above to see a summary.";
+  if (c.ind === "Bollinger Bands" && c.op === "price inside band") return "Buy when price is inside Bollinger Bands.";
+  return `${rule.type === "entry" ? "Buy" : "Sell"} when ${c.ind} ${c.op}${c.val ? ` ${c.val}` : ""}.`;
+}
+
+export default function AdvancedRuleCard({ rule, index, onChange, onDelete, variables = [] }) {
   const meta = TYPE_META[rule.type] || TYPE_META.entry;
   const actOpts = rule.type === "entry" ? ENTRY_ACTIONS : rule.type === "exit" ? EXIT_ACTIONS : RISK_ACTIONS;
+  const needsNum = rule.action?.includes("%") || rule.action?.includes("fixed amount");
+  const valueSuffix = rule.action?.includes("%") ? "%" : rule.action?.includes("fixed amount") ? "AUD" : "";
   const [thenDragOver, setThenDragOver] = useState(false);
+  const validations = (rule.steps || []).flatMap((s) => (s.conds || []).map(condValidation));
+  const hasInvalid = validations.some((v) => v.invalid);
+  const hasIncomplete = !hasInvalid && validations.some((v) => v.incomplete);
+  const statusStyle = hasInvalid
+    ? { border: "1px solid #E24B4A", borderLeft: "4px solid #E24B4A" }
+    : hasIncomplete
+      ? { border: "1px solid #854F0B", borderLeft: "4px solid #854F0B" }
+      : { border: "0.5px solid var(--color-border-tertiary)" };
 
   function updateStep(stepId, updatedStep) {
     onChange({ ...rule, steps: rule.steps.map((s) => (s.id === stepId ? updatedStep : s)) });
@@ -129,9 +182,8 @@ export default function AdvancedRuleCard({ rule, index, onChange, onDelete }) {
   }
 
   function onThenDragOver(e) {
-    if (!dataTransferHasCowriePalette(e.dataTransfer)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
+    if (dataTransferHasCowriePalette(e.dataTransfer)) e.dataTransfer.dropEffect = "copy";
     setThenDragOver(true);
   }
 
@@ -145,7 +197,7 @@ export default function AdvancedRuleCard({ rule, index, onChange, onDelete }) {
   }
 
   return (
-    <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden" }}>
+    <div style={{ borderRadius: 8, overflow: "hidden", ...statusStyle }}>
       <div
         style={{
           display: "flex",
@@ -214,7 +266,7 @@ export default function AdvancedRuleCard({ rule, index, onChange, onDelete }) {
                 ) : null}
               </div>
             ) : null}
-            <StepConditions step={step} onChange={(updated) => updateStep(step.id, updated)} />
+            <StepConditions step={step} onChange={(updated) => updateStep(step.id, updated)} variables={variables} />
           </div>
         ))}
 
@@ -249,6 +301,10 @@ export default function AdvancedRuleCard({ rule, index, onChange, onDelete }) {
           onDragOver={onThenDragOver}
           onDrop={onThenDrop}
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
             background: thenDragOver ? "rgba(200, 150, 62, 0.08)" : "var(--color-background-secondary)",
             border: thenDragOver ? "1.5px dashed rgba(200, 150, 62, 0.55)" : "0.5px solid var(--color-border-tertiary)",
             borderRadius: 8,
@@ -274,7 +330,45 @@ export default function AdvancedRuleCard({ rule, index, onChange, onDelete }) {
               <option key={a}>{a}</option>
             ))}
           </select>
+          {needsNum ? (
+            <>
+              <input
+                type="number"
+                value={rule.actionVal}
+                onChange={(e) => onChange({ ...rule, actionVal: e.target.value })}
+                style={{
+                  width: 72,
+                  height: 28,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  border: "0.5px solid var(--color-border-secondary)",
+                  borderRadius: 5,
+                  background: "var(--color-background-primary)",
+                  color: "var(--color-text-primary)",
+                  padding: "0 6px",
+                  textAlign: "center",
+                }}
+              />
+              <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{valueSuffix}</span>
+            </>
+          ) : null}
         </div>
+        {hasIncomplete ? (
+          <div
+            style={{
+              marginTop: 8,
+              borderRadius: 6,
+              border: "1px solid #854F0B",
+              color: "#633806",
+              background: "#FAEEDA",
+              fontSize: 11,
+              padding: "6px 8px",
+            }}
+          >
+            Complete this rule to activate.
+          </div>
+        ) : null}
+        <p style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--color-text-secondary)" }}>{advancedRuleReading(rule)}</p>
       </div>
     </div>
   );

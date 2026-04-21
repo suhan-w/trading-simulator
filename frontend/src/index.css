@@ -52,11 +52,9 @@
 }
 
 .strategy-page {
-  display: grid;
-  grid-template-columns: minmax(260px, max-content) 1fr;
-  gap: 16px;
-  align-items: start;
-  padding: 24px;
+  display: block;
+  width: 100%;
+  padding: 0;
 }
 
 .strategy-page-left {
@@ -70,6 +68,16 @@
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  width: 100%;
+}
+
+.backtest-expand-btn {
+  border: 0.5px solid #d0cec8;
+  border-radius: 7px;
+  background: #fff;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: #222;
 }
 
 /* Palette glossary panel — portaled to body, docks right */
@@ -1302,12 +1310,19 @@
   }
 
   .palette-block-tile {
+    appearance: none;
+    -webkit-appearance: none;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 10px;
     margin: 0 8px 8px;
+    width: calc(100% - 16px);
     padding: 10px 12px 10px 11px;
+    height: 44px;
     min-height: 44px;
+    max-height: 44px;
     border-radius: 10px;
     border: 1px solid var(--color-border-tertiary, #ede9e3);
     border-left: 4px solid var(--palette-tile-accent, #888);

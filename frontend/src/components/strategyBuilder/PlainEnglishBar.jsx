@@ -2,10 +2,7 @@ export function toPlainEnglishSimple(rules) {
   if (!rules.length) return null;
   return rules.map((rule, ri) => {
     if (rule.type === "risk") {
-      return {
-        id: rule.id,
-        text: `Risk: ${rule.action}${rule.actionVal ? " at " + rule.actionVal + "%" : ""}.`,
-      };
+      return `Risk: ${rule.action}${rule.actionVal ? " at " + rule.actionVal + "%" : ""}.`;
     }
     const condStr = rule.conds
       .map((c, ci) => {
@@ -15,7 +12,7 @@ export function toPlainEnglishSimple(rules) {
       })
       .join("");
     const verb = rule.type === "entry" ? "Buy" : "Sell";
-    return { id: rule.id, text: `Rule ${ri + 1}: ${verb} when ${condStr} → ${rule.action}.` };
+    return `Rule ${ri + 1}: ${verb} when ${condStr} → ${rule.action}.`;
   });
 }
 
@@ -35,7 +32,7 @@ export function toPlainEnglishAdvanced(rules) {
       })
       .join(", ");
     const verb = rule.type === "risk" ? rule.action : rule.type === "entry" ? "Buy" : "Sell";
-    return { id: rule.id, text: `Rule ${ri + 1}: ${verb} when ${stepStr}.` };
+    return `Rule ${ri + 1}: ${verb} when ${stepStr}.`;
   });
 }
 
@@ -55,9 +52,9 @@ export default function PlainEnglishBar({ sentences }) {
       <span style={tagStyle}>Reading</span>
       <span style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.65, flex: 1 }}>
         {sentences.map((s, i) => (
-          <span key={s.id}>
+          <span key={`${i}-${typeof s === "string" ? s : s?.id || "sentence"}`}>
             {i > 0 ? " " : null}
-            <span style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>{s.text}</span>
+            <span style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>{typeof s === "string" ? s : s?.text || ""}</span>
           </span>
         ))}
       </span>

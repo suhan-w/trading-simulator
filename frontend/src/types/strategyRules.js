@@ -9,23 +9,12 @@
 //
 // Condition: { id, ind: string, op: string, val: string, joiner: 'AND'|'OR' }
 
-export const INDICATORS = [
-  "RSI(14)",
-  "SMA(20)",
-  "SMA(50)",
-  "EMA(12)",
-  "EMA(26)",
-  "MACD",
-  "Bollinger upper",
-  "Bollinger lower",
-  "Price",
-  "Volume",
-];
+export const INDICATORS = ["SMA", "EMA", "MACD", "Volume", "RSI", "Stochastic", "Bollinger Bands", "Keltner Channel", "Price"];
 
-export const OPERATORS = ["crosses above", "crosses below", "is above", "is below"];
+export const OPERATORS = ["crosses above", "crosses below", "greater than", "less than", "two indicators cross", "price inside band"];
 
-export const ENTRY_ACTIONS = ["Buy — all cash", "Buy — 50% portfolio", "Buy — fixed amount"];
-export const EXIT_ACTIONS = ["Sell — entire position", "Sell — 50% position"];
+export const ENTRY_ACTIONS = ["Buy — all cash", "Buy — % portfolio", "Buy — fixed amount", "Hold — no trade"];
+export const EXIT_ACTIONS = ["Sell — entire position", "Sell — % position", "Sell — fixed amount", "Hold — no trade"];
 export const RISK_ACTIONS = ["Stop loss %", "Take profit %", "Max position %"];
 
 export function defaultAction(type) {
@@ -35,12 +24,31 @@ export function defaultAction(type) {
 }
 
 export function makeCondition(overrides = {}) {
+  const ind = overrides.ind ?? INDICATORS[0];
+  const indParams = {
+    rsiPeriod: "14",
+    smaPeriod: "20",
+    emaPeriod: "12",
+    macdFast: "12",
+    macdSlow: "26",
+    macdSignal: "9",
+    bbPeriod: "20",
+    bbStd: "2",
+    kcPeriod: "20",
+    kcMultiplier: "1.5",
+    volumePeriod: "1",
+    appliedTo: "Close",
+    ...(overrides.indParams || {}),
+  };
   return {
     id: crypto.randomUUID(),
-    ind: INDICATORS[0],
+    ind,
     op: OPERATORS[0],
     val: "",
     joiner: "AND",
+    indParams,
+    bandSelection: null,
+    secondIndicator: "",
     ...overrides,
   };
 }

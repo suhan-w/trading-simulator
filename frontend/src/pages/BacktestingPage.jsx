@@ -13,14 +13,13 @@ import {
   BacktestVsBenchmarkChart,
 } from "../components/BacktestCharts";
 import { api } from "../api/client";
-import { useAuth } from "../context/AuthContext";
-import ShareLeaderboardBanner from "../components/ShareLeaderboardBanner";
 import LeaderboardPage from "./LeaderboardPage";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
 import { TRADE_STRATEGY_REMINDER_KEY } from "../constants/tradeReminder";
 import { pushBacktestRunHistory } from "../constants/backtestRunHistoryStorage";
 import { loadVisualStrategies } from "../constants/visualStrategyStorage";
-import { translateVisualBlocksToPython } from "../utils/strategyBuilderTranslate";
+import { translateRulesToPython, translateVisualBlocksToPython } from "../utils/strategyBuilderTranslate";
+import { makeTemplateSimpleRules, templateTitle } from "../constants/strategyTemplates";
 
 function defaultRange() {
   const end = new Date();
@@ -48,10 +47,7 @@ function MetricCard({ label, value, hint }) {
 
 export default function BacktestingPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [tab, setTab] = useState("backtest");
-  const [paperSharePublic, setPaperSharePublic] = useState(false);
-  const [paperShareBusy, setPaperShareBusy] = useState(false);
   const { start: defaultStart, end: defaultEnd } = useMemo(() => defaultRange(), []);
   const [ticker, setTicker] = useState("CBA.AX");
   const [start, setStart] = useState(defaultStart);
@@ -62,6 +58,7 @@ export default function BacktestingPage() {
   const [savedStrategies, setSavedStrategies] = useState(() => loadVisualStrategies());
   /** @type {[null | "vs" | "signals" | "drawdown" | "daily", (v: null | "vs" | "signals" | "drawdown" | "daily") => void]} */
   const [expandedChart, setExpandedChart] = useState(null);
+  const [expandedCode, setExpandedCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
@@ -123,9 +120,12 @@ export default function BacktestingPage() {
   const m = result?.metrics;
 
   useEffect(() => {
-    if (!expandedChart) return undefined;
+    if (!expandedChart && !expandedCode) return undefined;
     const onKey = (e) => {
-      if (e.key === "Escape") setExpandedChart(null);
+      if (e.key === "Escape") {
+        setExpandedChart(null);
+        setExpandedCode(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -134,7 +134,7 @@ export default function BacktestingPage() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [expandedChart]);
+  }, [expandedChart, expandedCode]);
 
   const openExpanded = useCallback((key) => setExpandedChart(key), []);
 
@@ -178,15 +178,6 @@ export default function BacktestingPage() {
           Leaderboard
         </button>
       </div>
-      {user ? (
-        <div className="backtest-lb-share-wrap">
-          <ShareLeaderboardBanner
-            sharePublic={paperSharePublic}
-            onChangeShare={(v) => void onPaperShareToggle(v)}
-            disabled={paperShareBusy}
-          />
-        </div>
-      ) : null}
       {tab === "backtest" ? (
         <div className="space-y-6 md:space-y-8">
           <SectionHeading
@@ -229,7 +220,12 @@ export default function BacktestingPage() {
 
               <div className="cs-card min-w-0 overflow-hidden">
                 <div className="cs-card-header pb-2">
-                  <CardHeaderTitle title="Strategy Code" />
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <CardHeaderTitle title="Strategy Code" />
+                    <button type="button" className="backtest-expand-btn" onClick={() => setExpandedCode(true)}>
+                      Expand
+                    </button>
+                  </div>
                 </div>
                 <div className="min-w-0 border-t border-ink/[0.06] px-4 py-3">
                   <div className="backtest-code-editor">
@@ -282,47 +278,19 @@ export default function BacktestingPage() {
                     <div className="space-y-2">
                       <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Built-in templates</p>
                       <div className="backtest-example-pills">
-                        {[
-                          { key: "ma", title: "Moving Average Crossover" },
-                          { key: "rsi", title: "RSI Overbought/Oversold" },
-                          { key: "bh", title: "Buy and Hold" },
-                        ].map((t) => (
+                        {["ma", "rsi", "bh"].map((key) => (
                           <button
-                            key={t.key}
+                            key={key}
                             type="button"
                             className="strategy-pill"
                             onClick={() => {
-                              const blocks =
-                                t.key === "ma"
-                                  ? [
-                                      { type: "select_data" },
-                                      { type: "sma", params: { period: 20 } },
-                                      { type: "sma", params: { period: 50 } },
-                                      { type: "if_cross_above" },
-                                      { type: "buy", params: { mode: "all_cash" } },
-                                      { type: "if_cross_below" },
-                                      { type: "sell", params: { mode: "all" } },
-                                    ]
-                                  : t.key === "rsi"
-                                    ? [
-                                        { type: "select_data" },
-                                        { type: "rsi", params: { period: 14 } },
-                                        { type: "if_lt", params: { threshold: 30 } },
-                                        { type: "buy", params: { mode: "all_cash" } },
-                                        { type: "if_gt", params: { threshold: 70 } },
-                                        { type: "sell", params: { mode: "all" } },
-                                      ]
-                                    : [
-                                        { type: "select_data" },
-                                        { type: "buy", params: { mode: "all_cash" } },
-                                        { type: "hold" },
-                                      ];
-                              const py = translateVisualBlocksToPython(blocks, { ticker, start, end });
+                              const simpleRules = makeTemplateSimpleRules(key);
+                              const py = translateRulesToPython(simpleRules, [], "simple", { ticker, start, end });
                               setCode(py);
-                              setStrategySource({ loaded: false, name: t.title, fromStrategyPage: false });
+                              setStrategySource({ loaded: false, name: templateTitle(key), fromStrategyPage: false });
                             }}
                           >
-                            {t.title}
+                            {templateTitle(key)}
                           </button>
                         ))}
                       </div>
@@ -569,6 +537,43 @@ export default function BacktestingPage() {
                       </div>
                     )
                   ) : null}
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+      {expandedCode
+        ? createPortal(
+            <div className="backtest-chart-expand-overlay" role="presentation" onClick={() => setExpandedCode(false)}>
+              <div
+                className="backtest-chart-expand-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="backtest-code-expand-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="backtest-chart-expand-header">
+                  <h3 id="backtest-code-expand-title" className="backtest-chart-expand-title">
+                    Strategy Code
+                  </h3>
+                  <button
+                    type="button"
+                    className="backtest-chart-expand-close"
+                    onClick={() => setExpandedCode(false)}
+                    aria-label="Close expanded code editor"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="backtest-chart-expand-body">
+                  <CodeMirror
+                    value={code}
+                    height="min(82vh, 820px)"
+                    extensions={[python()]}
+                    onChange={setCode}
+                    theme="dark"
+                  />
                 </div>
               </div>
             </div>,
