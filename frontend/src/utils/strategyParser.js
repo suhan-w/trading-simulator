@@ -33,6 +33,35 @@ function parseIfExpression(expr, indicatorByVar, idSeed) {
     if (i > 0) combinators.push(parts[i - 1].toUpperCase() === "OR" ? "OR" : "AND");
     const c = chunk.match(/^(\w+)\.(crosses_above|crosses_below|greater_than|less_than)\(([-\d.]+)\)$/);
     const two = chunk.match(/^(\w+)\.crosses\((\w+)\)$/);
+    const ibNew = chunk.match(/^price\.inside_band\((\w+)(?:,\s*zone="(full|upper_half|lower_half)")?\)$/);
+    const ibOld = chunk.match(/^(\w+)\.inside_band\(\)$/);
+    if (ibNew) {
+      const ind = indicatorByVar.get(ibNew[1]);
+      if (!ind || ind.type !== "band") return null;
+      const zone = ibNew[2] || "full";
+      conditions.push({
+        id: `${idSeed}-row-${conditions.length + 1}`,
+        indicator: structuredClone(ind),
+        condition: "inside_band",
+        value: null,
+        secondIndicator: null,
+        bandZone: zone,
+      });
+      continue;
+    }
+    if (ibOld) {
+      const ind = indicatorByVar.get(ibOld[1]);
+      if (!ind || ind.type !== "band") return null;
+      conditions.push({
+        id: `${idSeed}-row-${conditions.length + 1}`,
+        indicator: structuredClone(ind),
+        condition: "inside_band",
+        value: null,
+        secondIndicator: null,
+        bandZone: "full",
+      });
+      continue;
+    }
     if (c) {
       const ind = indicatorByVar.get(c[1]);
       if (!ind) return null;
@@ -42,6 +71,7 @@ function parseIfExpression(expr, indicatorByVar, idSeed) {
         condition: c[2],
         value: Number(c[3]),
         secondIndicator: null,
+        bandZone: "full",
       });
       continue;
     }
@@ -55,6 +85,7 @@ function parseIfExpression(expr, indicatorByVar, idSeed) {
         condition: "two_indicators_cross",
         value: null,
         secondIndicator: structuredClone(second),
+        bandZone: "full",
       });
       continue;
     }

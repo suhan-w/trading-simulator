@@ -27,7 +27,11 @@ function conditionExpr(row) {
   const cond = row.condition;
   if (!row.indicator || !cond) return "False";
   const left = row.indicator.varName || `ind_${row.indicator.id.replace(/-/g, "_")}`;
-  if (cond === "inside_band") return `${left}.inside_band()`;
+  if (cond === "inside_band") {
+    const z = row.bandZone || "full";
+    if (z === "full") return `price.inside_band(${left})`;
+    return `price.inside_band(${left}, zone="${z}")`;
+  }
   if (cond === "two_indicators_cross") {
     if (!row.secondIndicator) return "False";
     const right = row.secondIndicator.varName || `ind_${row.secondIndicator.id.replace(/-/g, "_")}`;

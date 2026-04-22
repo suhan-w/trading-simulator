@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { compileStrategyToPython } from "../utils/strategyCompiler";
+import { compileUnifiedRulesToRunPython } from "../utils/strategyRunCompiler";
 import { parsePythonToStrategy } from "../utils/strategyParser";
 
 const TOKENS = {
@@ -21,6 +21,8 @@ const INDICATORS = [
   { kind: "Bollinger Bands", type: "band", full: "Bollinger Bands", what: "Builds upper/lower volatility bands around a moving average." },
   { kind: "Keltner Channel", type: "band", full: "Keltner Channel", what: "Builds ATR-based channel envelopes around an EMA trend line." },
 ];
+const LINE_INDICATORS = INDICATORS.filter((i) => i.type === "line");
+const BAND_INDICATORS = INDICATORS.filter((i) => i.type === "band");
 const CONDITIONS = [
   { id: "crosses_above", label: "Crosses above" },
   { id: "crosses_below", label: "Crosses below" },
@@ -183,6 +185,202 @@ const PARAM_UNIT = {
   atrMultiplier: "x",
 };
 
+const DROP_MSG_LINE_CROSS = "Two indicators cross only works with Line indicators (SMA, EMA, MACD, Volume)";
+const DROP_MSG_BAND_INSIDE = "Inside band only works with band indicators (Bollinger Bands, Keltner Channel)";
+
+const BAND_ZONE_LABEL = {
+  full: "between upper and lower",
+  upper_half: "between middle and upper",
+  lower_half: "between lower and middle",
+};
+
+function formatIndicatorShort(ind) {
+  if (!ind) return "…";
+  const p = ind.params || {};
+  if (ind.kind === "SMA" || ind.kind === "EMA") return `${ind.kind} (${p.period ?? 20})`;
+  if (ind.kind === "MACD") return `${ind.kind} (${p.fast ?? 12}/${p.slow ?? 26})`;
+  if (ind.kind === "RSI" || ind.kind === "Stochastic") return `${ind.kind} (${p.period ?? 14})`;
+  if (ind.kind === "Bollinger Bands") return `${ind.kind} (${p.period ?? 20})`;
+  if (ind.kind === "Keltner Channel") return `${ind.kind} (${p.period ?? 20})`;
+  if (ind.kind === "Volume") return ind.kind;
+  return ind.kind;
+}
+
+/** Plain-English narrative under “Code”; glosses jargon on first mention only (option 8). */
+function indicatorWithGloss(ind, seenKinds) {
+  if (!ind) return "…";
+  const short = formatIndicatorShort(ind);
+  const full = INDICATORS.find((x) => x.kind === ind.kind)?.full;
+  if (full && !seenKinds.has(ind.kind)) {
+    seenKinds.add(ind.kind);
+    return `${short} (${full})`;
+  }
+  return short;
+}
+
+function friendlyBandZoneSentence(z) {
+  if (z === "upper_half") return "in the upper half of the channel (between the middle and upper lines)";
+  if (z === "lower_half") return "in the lower half (between the middle and lower lines)";
+  return "between the upper and lower lines of the band";
+}
+
+function conditionVerbGloss(condId, seenVerbs) {
+  const labels = {
+    crosses_above: ["crosses above", " — i.e. moves up through that level on this bar"],
+    crosses_below: ["crosses below", " — i.e. moves down through that level on this bar"],
+    greater_than: ["is above", " — stays higher than that level"],
+    less_than: ["is below", " — stays lower than that level"],
+  };
+  const pair = labels[condId];
+  if (!pair) return CONDITIONS.find((c) => c.id === condId)?.label?.toLowerCase() || condId;
+  const [short, gloss] = pair;
+  if (!seenVerbs.has(condId)) {
+    seenVerbs.add(condId);
+    return `${short}${gloss}`;
+  }
+  return short;
+}
+
+function describeActionFriendly(action, seenActions) {
+  if (!action?.kind) return "choose an action";
+  const pct = Number(action.params?.value ?? 50);
+  switch (action.kind) {
+    case "buy_all_cash": {
+      if (!seenActions.has("buy_all_cash")) {
+        seenActions.add("buy_all_cash");
+        return "buy using all available cash (full size)";
+      }
+      return "buy using all available cash";
+    }
+    case "buy_percent_portfolio": {
+      if (!seenActions.has("buy_pct")) {
+        seenActions.add("buy_pct");
+        return `buy ${pct}% of the portfolio (part of account value)`;
+      }
+      return `buy ${pct}% of the portfolio`;
+    }
+    case "sell_entire_position": {
+      if (!seenActions.has("sell_all")) {
+        seenActions.add("sell_all");
+        return "sell the entire open position";
+      }
+      return "sell the entire position";
+    }
+    case "sell_percent_position": {
+      if (!seenActions.has("sell_pct")) {
+        seenActions.add("sell_pct");
+        return `sell ${pct}% of the open position (partial exit)`;
+      }
+      return `sell ${pct}% of the position`;
+    }
+    default:
+      return ACTIONS.find((a) => a.kind === action.kind)?.label || action.kind;
+  }
+}
+
+function describeConditionRowPlain(row, ctx) {
+  const { seenKinds, seenVerbs } = ctx;
+  if (!row.condition) return null;
+
+  if (row.condition === "two_indicators_cross") {
+    const a = row.indicator ? indicatorWithGloss(row.indicator, seenKinds) : "(first trend line)";
+    const b = row.secondIndicator ? indicatorWithGloss(row.secondIndicator, seenKinds) : "(second trend line)";
+    let tail = "";
+    if (!ctx.twoCrossGlossUsed) {
+      ctx.twoCrossGlossUsed = true;
+      tail = " — whenever those two lines cross (either direction)";
+    }
+    return `${a} and ${b}${tail}`;
+  }
+
+  if (row.condition === "inside_band") {
+    const band = row.indicator ? indicatorWithGloss(row.indicator, seenKinds) : "the volatility band";
+    const zone = row.bandZone || "full";
+    let zoneBit = friendlyBandZoneSentence(zone);
+    if (!ctx.seenInsideZones.has(zone)) {
+      ctx.seenInsideZones.add(zone);
+      zoneBit += zone === "full"
+        ? " (typical “price came back inside the envelope” setup)"
+        : " (narrower slice of the channel)";
+    }
+    return `price is ${zoneBit} for ${band}`;
+  }
+
+  if (!row.indicator) return null;
+  const ind = indicatorWithGloss(row.indicator, seenKinds);
+  const verb = conditionVerbGloss(row.condition, seenVerbs);
+  const v = row.value;
+  const osc = row.indicator.type === "oscillator";
+  const target = osc ? `the ${v} level on that gauge` : `the ${v} threshold`;
+  if (row.condition === "crosses_above" || row.condition === "crosses_below") {
+    return `${ind} ${verb} ${target}`;
+  }
+  return `${ind} ${verb} ${target}`;
+}
+
+function describeRiskPlain(rule, ctx) {
+  const parts = [];
+  if (Number(rule.stopLoss || 0) > 0) {
+    if (!ctx.riskSlGlossed) {
+      ctx.riskSlGlossed = true;
+      parts.push(`exit if price falls ${rule.stopLoss}% against you (stop loss — caps downside)`);
+    } else {
+      parts.push(`stop loss ${rule.stopLoss}%`);
+    }
+  }
+  if (Number(rule.takeProfit || 0) > 0) {
+    if (!ctx.riskTpGlossed) {
+      ctx.riskTpGlossed = true;
+      parts.push(`take profit at ${rule.takeProfit}% gain (lock in profit)`);
+    } else {
+      parts.push(`take profit ${rule.takeProfit}%`);
+    }
+  }
+  if (!parts.length) return null;
+  return `Risk: ${parts.join("; ")}.`;
+}
+
+function plainEnglishFromUnifiedRules(rules) {
+  const entry = rules.find((r) => r.kind === "entry");
+  const exitRule = rules.find((r) => r.kind === "exit");
+  const risk = rules.find((r) => r.kind === "risk");
+  const ctx = {
+    seenKinds: new Set(),
+    seenVerbs: new Set(),
+    twoCrossGlossUsed: false,
+    seenInsideZones: new Set(),
+    seenActions: new Set(),
+    riskSlGlossed: false,
+    riskTpGlossed: false,
+  };
+  const lines = [];
+
+  const buildRuleSentence = (rule, title) => {
+    const rows = rule.conditions || [];
+    const chunks = [];
+    for (let i = 0; i < rows.length; i++) {
+      const piece = describeConditionRowPlain(rows[i], ctx);
+      if (piece) {
+        if (chunks.length) {
+          const join = rule.combinators?.[i - 1] === "OR" ? "or" : "and";
+          chunks.push(join);
+        }
+        chunks.push(piece);
+      }
+    }
+    const when = chunks.length ? chunks.join(" ") : "your entry/exit conditions aren’t complete yet";
+    const action = describeActionFriendly(rule.action, ctx.seenActions);
+    return `${title}: When ${when}, then ${action}.`;
+  };
+
+  if (entry) lines.push(buildRuleSentence(entry, "Entry"));
+  if (exitRule) lines.push(buildRuleSentence(exitRule, "Exit"));
+  const riskLine = risk ? describeRiskPlain(risk, ctx) : null;
+  if (riskLine) lines.push(riskLine);
+
+  return lines.filter(Boolean);
+}
+
 function iconButton(label, onClick) {
   return (
     <button
@@ -217,10 +415,13 @@ const mkIndicator = (kind) => {
     kind === "Volume" ? { period: 20 } : {};
   return { id: crypto.randomUUID(), kind, type: m?.type || "line", params, band: null };
 };
-const mkRow = () => ({ id: crypto.randomUUID(), indicator: null, condition: null, value: null, secondIndicator: null });
+const mkRow = () => ({ id: crypto.randomUUID(), indicator: null, condition: null, value: null, secondIndicator: null, bandZone: "full" });
 const mkRule = (kind) => kind === "risk"
   ? { id: crypto.randomUUID(), kind, title: "Risk rule", stopLoss: 2, takeProfit: null }
   : { id: crypto.randomUUID(), kind, title: `${kind === "entry" ? "Entry" : "Exit"} rule`, conditions: [mkRow()], combinators: [], action: null };
+
+/** Survives dragend vs drop ordering bugs; cleared after applyDrop reads it */
+const SIDEBAR_DRAG_STORAGE_KEY = "cowrie-strategy-builder-drag-payload-v1";
 
 function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSaveStrategy, onOpenBacktesting, onRunAvailabilityChange, onExpandEditor, renderLayout }, ref) {
   const [rules, setRules] = useState([mkRule("entry"), mkRule("exit")]);
@@ -241,11 +442,22 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
   const [plannerStopPct, setPlannerStopPct] = useState(2);
   const [plannerTakeProfitPct, setPlannerTakeProfitPct] = useState(4);
   const [saveFeedback, setSaveFeedback] = useState("");
+  /** Palette presets for composite condition tiles (sidebar) */
+  const [paletteTwoCross, setPaletteTwoCross] = useState({ first: "EMA", second: "SMA" });
+  const [paletteInsideBand, setPaletteInsideBand] = useState({ kind: "Bollinger Bands", period: 20 });
+  const [dropTip, setDropTip] = useState(null);
+  const [shakeRowId, setShakeRowId] = useState(null);
+  const [insideBandPopoverRowId, setInsideBandPopoverRowId] = useState(null);
   const editorRef = useRef(null);
 
   const hasEntry = rules.some((r) => r.kind === "entry");
   const hasExitOrRisk = rules.some((r) => r.kind === "exit" || r.kind === "risk");
-  const rowDone = (r) => r.indicator && r.condition && (r.condition === "inside_band" ? true : r.condition === "two_indicators_cross" ? !!r.secondIndicator : r.value != null);
+  const rowDone = (r) => {
+    if (!r.indicator || !r.condition) return false;
+    if (r.condition === "inside_band") return r.indicator.type === "band";
+    if (r.condition === "two_indicators_cross") return r.indicator.type === "line" && !!r.secondIndicator;
+    return r.value != null;
+  };
   const ruleDone = (rule) => rule.kind === "risk"
     ? Number(rule.stopLoss || 0) > 0 || Number(rule.takeProfit || 0) > 0
     : !!rule.action && rule.conditions.length > 0 && rule.conditions.every(rowDone);
@@ -254,7 +466,10 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
   useEffect(() => onRunAvailabilityChange?.({ disabled: !canTest }), [canTest, onRunAvailabilityChange]);
 
   const pythonFromVisual = useMemo(
-    () => compileStrategyToPython(structuredClone(rules.filter((r) => r.kind !== "risk").map((r) => ({ ...r, action: r.action || { kind: "buy_all_cash", params: {} } })))),
+    () =>
+      compileUnifiedRulesToRunPython(
+        structuredClone(rules.map((r) => (r.kind !== "risk" ? { ...r, action: r.action || { kind: "buy_all_cash", params: {} } } : r)))
+      ),
     [rules]
   );
   useEffect(() => {
@@ -266,10 +481,13 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
 
   const parseState = useMemo(() => {
     if (!codeText.trim()) return { parseable: false, reason: "Code is empty." };
+    if (!customCode && codeText.includes("cowrie-backtest-strategy")) {
+      return { parseable: true, reason: "Synced from visual rules — executable for backtesting." };
+    }
     const parsed = parsePythonToStrategy(codeText);
     if (parsed) return { parseable: true, reason: "Code can be round-tripped into visual rules." };
     return { parseable: false, reason: "Custom logic cannot be represented by visual DSL." };
-  }, [codeText]);
+  }, [codeText, customCode]);
   const entryRule = useMemo(() => rules.find((r) => r.kind === "entry"), [rules]);
   const exitRule = useMemo(() => rules.find((r) => r.kind === "exit"), [rules]);
   const riskRule = useMemo(() => rules.find((r) => r.kind === "risk"), [rules]);
@@ -283,9 +501,10 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
       { label: "Exit rule is complete (when + then)", done: exitReady },
       { label: "Risk rule exists (recommended)", done: hasRisk },
       { label: "At least one position sizing action uses %", done: hasSizingAction },
-      { label: "Strategy can be tested now", done: canTest && parseState.parseable },
+      { label: "Strategy can be tested now", done: canTest && (!customCode || parseState.parseable) },
     ];
   }, [entryRule, exitRule, riskRule, rules, canTest, parseState.parseable]);
+  const plainEnglishLines = useMemo(() => plainEnglishFromUnifiedRules(rules), [rules]);
   const plannerRiskAmount = useMemo(() => Math.max(0, Number(plannerCapital) || 0) * ((Number(plannerRiskPct) || 0) / 100), [plannerCapital, plannerRiskPct]);
   const plannerPositionSize = useMemo(() => {
     const stop = Number(plannerStopPct) || 0;
@@ -303,6 +522,21 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
     const t = setTimeout(() => setSaveFeedback(""), 1800);
     return () => clearTimeout(t);
   }, [saveFeedback]);
+  useEffect(() => {
+    if (!dropTip) return undefined;
+    const t = setTimeout(() => setDropTip(null), 4500);
+    return () => clearTimeout(t);
+  }, [dropTip]);
+  useEffect(() => {
+    if (insideBandPopoverRowId == null) return undefined;
+    const onDown = (e) => {
+      const el = e.target;
+      if (el.closest?.("[data-sb-inside-band-popover]") || el.closest?.("[data-sb-inside-band-anchor]")) return;
+      setInsideBandPopoverRowId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [insideBandPopoverRowId]);
 
   const summary = (rule) => {
     if (rule.kind === "risk") {
@@ -313,9 +547,23 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
     }
     const row = rule.conditions[0];
     if (!row?.indicator || !row?.condition || !rule.action) return "Incomplete";
+    const pctVal = Number(rule.action.params?.value ?? 50);
+    let actionReadable = ACTIONS.find((x) => x.kind === rule.action.kind)?.label || rule.action.kind;
+    if (rule.action.kind === "buy_percent_portfolio") actionReadable = `Buy ${pctVal}% portfolio`;
+    else if (rule.action.kind === "sell_percent_position") actionReadable = `Sell ${pctVal}% position`;
+    const sideVerb = rule.kind === "entry" ? "Buy" : "Sell";
+    if (row.condition === "two_indicators_cross") {
+      const i1 = formatIndicatorShort(row.indicator);
+      const i2 = formatIndicatorShort(row.secondIndicator);
+      return `${sideVerb} when ${i1} crosses ${i2} → ${actionReadable}`;
+    }
+    if (row.condition === "inside_band") {
+      const z = row.bandZone || "full";
+      const zoneBit = z === "full" ? "(between upper and lower)" : z === "upper_half" ? "(between middle and upper)" : "(between lower and middle)";
+      return `${sideVerb} when price is inside ${row.indicator.kind} ${zoneBit} → ${actionReadable}`;
+    }
     const c = CONDITIONS.find((x) => x.id === row.condition)?.label || row.condition;
-    const a = ACTIONS.find((x) => x.kind === rule.action.kind)?.label || rule.action.kind;
-    return `${row.indicator.kind} ${c} ${row.value ?? ""} → ${a}`;
+    return `${row.indicator.kind} ${c} ${row.value ?? ""} → ${actionReadable}`;
   };
   const applyPlaybook = (kind) => {
     const entry = mkRule("entry");
@@ -376,18 +624,52 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
     setTooltip({ key: null, text: "" });
   };
 
+  const beginSidebarDrag = (e, payload) => {
+    isDraggingRef.current = true;
+    dragPayloadRef.current = payload;
+    const serialized = JSON.stringify(payload);
+    try {
+      sessionStorage.setItem(SIDEBAR_DRAG_STORAGE_KEY, serialized);
+    } catch {
+      /* ignore */
+    }
+    e.dataTransfer.setData("application/json", serialized);
+    e.dataTransfer.setData("text/plain", serialized);
+    e.dataTransfer.setData("text/x-action-kind", typeof payload.value === "string" ? payload.value : "");
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const endSidebarDrag = () => {
+    setTimeout(() => {
+      dragPayloadRef.current = null;
+      isDraggingRef.current = false;
+      try {
+        sessionStorage.removeItem(SIDEBAR_DRAG_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }, 200);
+  };
+
   const applyDrop = (e, ruleId, rowId, zone) => {
     e.preventDefault();
     if (visualLocked) return;
+    const dt = e.dataTransfer ?? e.nativeEvent?.dataTransfer;
+    const refFallback = dragPayloadRef.current;
     let payload = null;
     try {
-      const raw =
-        e.dataTransfer.getData("application/json") ||
-        e.dataTransfer.getData("text/plain") ||
-        "";
-      payload = raw ? JSON.parse(raw) : dragPayloadRef.current;
+      const rawStr = `${dt?.getData("application/json") || dt?.getData("text/plain") || ""}`.trim();
+      payload = rawStr ? JSON.parse(rawStr) : refFallback;
     } catch {
-      payload = dragPayloadRef.current;
+      payload = refFallback;
+    }
+    if (!payload && typeof sessionStorage !== "undefined") {
+      try {
+        const s = sessionStorage.getItem(SIDEBAR_DRAG_STORAGE_KEY);
+        if (s) payload = JSON.parse(s);
+      } catch {
+        /* ignore */
+      }
     }
     if (!payload) return;
     if (typeof payload === "string" && actionKinds.has(payload)) {
@@ -397,6 +679,12 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
     } else if (!payload.kind && typeof payload.action === "string" && actionKinds.has(payload.action)) {
       payload = { kind: "action", value: payload.action };
     }
+    try {
+      sessionStorage.removeItem(SIDEBAR_DRAG_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    const dropOutcome = { tip: null, shakeRowId: null };
     setRules((prev) => prev.map((rule) => {
       if (rule.id !== ruleId) return rule;
       if (rule.kind === "risk" && zone === "risk-type") {
@@ -412,28 +700,106 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
         return { ...rule, action: { kind: payload.value, params: payload.value.includes("percent") ? { value: 50 } : {} } };
       }
       if (zone === "new-row") {
-        const row = mkRow();
+        let row = mkRow();
         if (payload.kind === "indicator") row.indicator = mkIndicator(payload.value);
-        if (payload.kind === "condition") row.condition = payload.value;
+        if (payload.kind === "condition") {
+          row.condition = payload.value;
+          if (payload.value === "two_indicators_cross" || payload.value === "inside_band") row.value = null;
+          if (payload.value === "two_indicators_cross" && payload.presetFirstKind && payload.presetSecondKind) {
+            row.indicator = mkIndicator(payload.presetFirstKind);
+            row.secondIndicator = mkIndicator(payload.presetSecondKind);
+          }
+          if (payload.value === "inside_band" && payload.presetBandKind) {
+            let ind = mkIndicator(payload.presetBandKind);
+            if (payload.presetParams && typeof payload.presetParams === "object") {
+              ind = { ...ind, params: { ...ind.params, ...payload.presetParams } };
+            }
+            row.indicator = ind;
+            row.secondIndicator = null;
+          }
+        }
         return { ...rule, conditions: [...rule.conditions, row], combinators: [...rule.combinators, "AND"] };
+      }
+      if (zone === "second-indicator") {
+        const conditions = rule.conditions.map((row) => {
+          if (row.id !== rowId) return row;
+          if (payload.kind !== "indicator") return row;
+          const ind = mkIndicator(payload.value);
+          if (row.condition !== "two_indicators_cross") return row;
+          if (ind.type !== "line") {
+            dropOutcome.tip = DROP_MSG_LINE_CROSS;
+            dropOutcome.shakeRowId = rowId;
+            return row;
+          }
+          return { ...row, secondIndicator: ind };
+        });
+        return { ...rule, conditions };
       }
       const conditions = rule.conditions.map((row) => {
         if (row.id !== rowId) return row;
         if (payload.kind === "indicator") {
           const ind = mkIndicator(payload.value);
+          if (row.condition === "two_indicators_cross") {
+            if (ind.type !== "line") {
+              dropOutcome.tip = DROP_MSG_LINE_CROSS;
+              dropOutcome.shakeRowId = rowId;
+              return row;
+            }
+            if (!row.indicator) {
+              return { ...row, indicator: ind, secondIndicator: row.secondIndicator ?? null };
+            }
+            return { ...row, secondIndicator: ind };
+          }
+          if (row.condition === "inside_band") {
+            if (ind.type !== "band") {
+              dropOutcome.tip = DROP_MSG_BAND_INSIDE;
+              dropOutcome.shakeRowId = rowId;
+              return row;
+            }
+            return { ...row, indicator: ind, secondIndicator: null, bandZone: row.bandZone || "full" };
+          }
           return { ...row, indicator: ind, secondIndicator: null, condition: row.condition && compat(ind.type, row.condition) ? row.condition : null };
         }
         if (payload.kind === "condition") {
-          const next = { ...row, condition: payload.value };
+          if (payload.value === "inside_band" && row.indicator && row.indicator.type !== "band") {
+            dropOutcome.tip = DROP_MSG_BAND_INSIDE;
+            dropOutcome.shakeRowId = rowId;
+            return row;
+          }
+          if (payload.value === "two_indicators_cross" && row.indicator && row.indicator.type !== "line") {
+            dropOutcome.tip = DROP_MSG_LINE_CROSS;
+            dropOutcome.shakeRowId = rowId;
+            return row;
+          }
+          let next = { ...row, condition: payload.value };
           if (row.indicator?.type === "oscillator" && (payload.value === "crosses_above" || payload.value === "crosses_below")) next.value = 70;
           if (row.indicator?.type === "oscillator" && payload.value === "less_than") next.value = 30;
           if (payload.value === "two_indicators_cross" || payload.value === "inside_band") next.value = null;
+          if (payload.value === "inside_band") next.bandZone = next.bandZone || "full";
+          if (payload.value === "two_indicators_cross" && payload.presetFirstKind && payload.presetSecondKind) {
+            next = {
+              ...next,
+              indicator: mkIndicator(payload.presetFirstKind),
+              secondIndicator: mkIndicator(payload.presetSecondKind),
+            };
+          } else if (payload.value === "inside_band" && payload.presetBandKind) {
+            let ind = mkIndicator(payload.presetBandKind);
+            if (payload.presetParams && typeof payload.presetParams === "object") {
+              ind = { ...ind, params: { ...ind.params, ...payload.presetParams } };
+            }
+            next = { ...next, indicator: ind, secondIndicator: null, bandZone: "full" };
+          }
           return next;
         }
         return row;
       });
       return { ...rule, conditions };
     }));
+    if (dropOutcome.tip) setDropTip(dropOutcome.tip);
+    if (dropOutcome.shakeRowId) {
+      setShakeRowId(dropOutcome.shakeRowId);
+      setTimeout(() => setShakeRowId(null), 550);
+    }
     setCustomCode(false);
     setVisualLocked(false);
   };
@@ -689,86 +1055,341 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
                         </div>
                       ) : null}
                       <div style={{ border: row.indicator || row.condition ? "0.5px solid #e4e2db" : "0.5px dashed #d5d3cc", borderRadius: 7, background: row.indicator || row.condition ? "#fff" : "#faf9f6", padding: "7px 9px", minHeight: 36, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => applyDrop(e, rule.id, row.id, "row")}>
-                        {!row.indicator && !row.condition ? <span style={{ fontSize: 11, color: "#aaa", fontStyle: "italic" }}>Drag a condition from the left to get started</span> : null}
-                        {row.indicator ? (
-                          <div style={{ border: "0.5px solid #e4e2db", borderRadius: 7, background: "#fff", overflow: "hidden", minWidth: 220 }}>
-                            <div style={{ padding: "6px 8px" }}>
-                              <div style={{ display: "inline-flex", alignItems: "stretch", border: `0.5px solid ${BADGE[row.indicator.type].border}`, borderRadius: 7, overflow: "hidden", background: "#fff" }}>
-                                <button type="button" onClick={() => openGlossary(row.indicator.kind)} style={{ fontSize: 11.5, border: 0, borderRight: `1px solid ${BADGE[row.indicator.type].border}`, background: BADGE[row.indicator.type].bg, color: BADGE[row.indicator.type].text, borderRadius: 0, padding: "4px 9px" }}>
-                                  {row.indicator.kind}
-                                </button>
-                                {Object.keys(row.indicator.params || {})
-                                  .filter((k) => k !== "appliedTo")
-                                  .map((key) => (
-                                    <div key={`${row.id}-${key}`} style={{ display: "inline-flex", alignItems: "stretch" }}>
-                                      <input
-                                        type="number"
-                                        aria-label={`${row.indicator.kind} ${key}`}
-                                        value={row.indicator.params[key] ?? ""}
+                        {!row.indicator && !row.condition ? <span style={{ fontSize: 11, color: "#aaa", fontStyle: "italic" }}>Drag a condition here</span> : null}
+                        {row.condition === "two_indicators_cross" ? (
+                          <div
+                            className={shakeRowId === row.id ? "sb-cond-row--shake" : undefined}
+                            role="group"
+                            aria-label="Two line indicators cross"
+                            style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 100%", minWidth: 0 }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                              {row.indicator ? (
+                                <div style={{ border: "0.5px solid #e4e2db", borderRadius: 7, background: "#fff", overflow: "hidden", minWidth: 0 }}>
+                                  <div style={{ padding: "6px 8px" }}>
+                                    <div style={{ display: "inline-flex", alignItems: "stretch", border: `0.5px solid ${BADGE[row.indicator.type].border}`, borderRadius: 7, overflow: "hidden", background: "#fff", flexWrap: "wrap" }}>
+                                      <button type="button" onClick={() => openGlossary(row.indicator.kind)} style={{ fontSize: 11.5, border: 0, borderRight: `1px solid ${BADGE[row.indicator.type].border}`, background: BADGE[row.indicator.type].bg, color: BADGE[row.indicator.type].text, borderRadius: 0, padding: "4px 9px" }}>
+                                        {row.indicator.kind}
+                                      </button>
+                                      {Object.keys(row.indicator.params || {})
+                                        .filter((k) => k !== "appliedTo")
+                                        .map((key) => (
+                                          <div key={`${row.id}-tc1-${key}`} style={{ display: "inline-flex", alignItems: "stretch" }}>
+                                            <input
+                                              type="number"
+                                              aria-label={`${row.indicator.kind} ${key}`}
+                                              value={row.indicator.params[key] ?? ""}
+                                              onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                                ...r,
+                                                conditions: r.conditions.map((x) => x.id !== row.id || !x.indicator ? x : ({
+                                                  ...x,
+                                                  indicator: { ...x.indicator, params: { ...x.indicator.params, [key]: Number(e.target.value || 0) } },
+                                                })),
+                                              })))}
+                                              style={{ height: 26, width: 56, border: 0, borderLeft: "0.5px solid #ece8de", background: "#fff", padding: "0 7px 0 8px", fontSize: 11.5, color: "#222", outline: "none", textAlign: "right", fontFamily: "monospace" }}
+                                            />
+                                            <span style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 5px 0 4px", borderLeft: "0.5px solid #ece8de", background: "#fff", fontSize: 9.5, color: "#9a968d", letterSpacing: "0.01em" }}>
+                                              {PARAM_UNIT[key] || key}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      {"appliedTo" in (row.indicator.params || {}) ? (
+                                        <select
+                                          aria-label={`${row.indicator.kind} applied to`}
+                                          value={row.indicator.params.appliedTo ?? "Close"}
+                                          onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                            ...r,
+                                            conditions: r.conditions.map((x) => x.id !== row.id || !x.indicator ? x : ({
+                                              ...x,
+                                              indicator: { ...x.indicator, params: { ...x.indicator.params, appliedTo: e.target.value } },
+                                            })),
+                                          })))}
+                                          style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.indicator.type].border}`, background: "#fffdf8", padding: "0 8px", fontSize: 11, color: "#444", outline: "none" }}
+                                        >
+                                          {["Close", "Open", "High", "Low"].map((v) => (
+                                            <option key={v} value={v}>{v}</option>
+                                          ))}
+                                        </select>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove ${row.indicator.kind} indicator`}
+                                        onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                          ...r,
+                                          conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, indicator: null, secondIndicator: null })),
+                                        })))}
+                                        style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.indicator.type].border}`, background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span style={{ background: "#f1efe8", border: "0.5px dashed #c8c6be", color: "#999", fontStyle: "italic", fontSize: 11, padding: "4px 10px", borderRadius: 7, minHeight: 26, display: "inline-flex", alignItems: "center" }}>drop a Line indicator</span>
+                              )}
+                              <span style={{ fontSize: 11, color: "#888", padding: "0 4px" }}>crosses</span>
+                              <div
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"; }}
+                                onDrop={(e) => { e.stopPropagation(); applyDrop(e, rule.id, row.id, "second-indicator"); }}
+                              >
+                                {row.secondIndicator ? (
+                                  <div style={{ border: "0.5px solid #e4e2db", borderRadius: 7, background: "#fff", overflow: "hidden", minWidth: 0 }}>
+                                    <div style={{ padding: "6px 8px" }}>
+                                      <div style={{ display: "inline-flex", alignItems: "stretch", border: `0.5px solid ${BADGE[row.secondIndicator.type].border}`, borderRadius: 7, overflow: "hidden", background: "#fff", flexWrap: "wrap" }}>
+                                        <button type="button" onClick={() => openGlossary(row.secondIndicator.kind)} style={{ fontSize: 11.5, border: 0, borderRight: `1px solid ${BADGE[row.secondIndicator.type].border}`, background: BADGE[row.secondIndicator.type].bg, color: BADGE[row.secondIndicator.type].text, borderRadius: 0, padding: "4px 9px" }}>
+                                          {row.secondIndicator.kind}
+                                        </button>
+                                        {Object.keys(row.secondIndicator.params || {})
+                                          .filter((k) => k !== "appliedTo")
+                                          .map((key) => (
+                                            <div key={`${row.id}-tc2-${key}`} style={{ display: "inline-flex", alignItems: "stretch" }}>
+                                              <input
+                                                type="number"
+                                                aria-label={`Second ${row.secondIndicator.kind} ${key}`}
+                                                value={row.secondIndicator.params[key] ?? ""}
+                                                onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                                  ...r,
+                                                  conditions: r.conditions.map((x) => x.id !== row.id || !x.secondIndicator ? x : ({
+                                                    ...x,
+                                                    secondIndicator: { ...x.secondIndicator, params: { ...x.secondIndicator.params, [key]: Number(e.target.value || 0) } },
+                                                  })),
+                                                })))}
+                                                style={{ height: 26, width: 56, border: 0, borderLeft: "0.5px solid #ece8de", background: "#fff", padding: "0 7px 0 8px", fontSize: 11.5, color: "#222", outline: "none", textAlign: "right", fontFamily: "monospace" }}
+                                              />
+                                              <span style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 5px 0 4px", borderLeft: "0.5px solid #ece8de", background: "#fff", fontSize: 9.5, color: "#9a968d", letterSpacing: "0.01em" }}>
+                                                {PARAM_UNIT[key] || key}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        {"appliedTo" in (row.secondIndicator.params || {}) ? (
+                                          <select
+                                            aria-label={`Second ${row.secondIndicator.kind} applied to`}
+                                            value={row.secondIndicator.params.appliedTo ?? "Close"}
+                                            onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                              ...r,
+                                              conditions: r.conditions.map((x) => x.id !== row.id || !x.secondIndicator ? x : ({
+                                                ...x,
+                                                secondIndicator: { ...x.secondIndicator, params: { ...x.secondIndicator.params, appliedTo: e.target.value } },
+                                              })),
+                                            })))}
+                                            style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.secondIndicator.type].border}`, background: "#fffdf8", padding: "0 8px", fontSize: 11, color: "#444", outline: "none" }}
+                                          >
+                                            {["Close", "Open", "High", "Low"].map((v) => (
+                                              <option key={v} value={v}>{v}</option>
+                                            ))}
+                                          </select>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          aria-label={`Remove second ${row.secondIndicator.kind}`}
+                                          onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                            ...r,
+                                            conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, secondIndicator: null })),
+                                          })))}
+                                          style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.secondIndicator.type].border}`, background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span style={{ background: "#f1efe8", border: "0.5px dashed #c8c6be", color: "#999", fontStyle: "italic", fontSize: 11, padding: "4px 10px", borderRadius: 7, minHeight: 26, display: "inline-flex", alignItems: "center" }}>drop a Line indicator</span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Remove two-indicator cross condition"
+                                onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                  ...r,
+                                  conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, condition: null, value: null, secondIndicator: null })),
+                                })))}
+                                style={{ border: 0, background: "transparent", color: "#aaa", fontSize: 14, lineHeight: 1, padding: "0 4px", cursor: "pointer" }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ) : row.condition === "inside_band" ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 100%", minWidth: 0, position: "relative" }}>
+                            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                              {row.indicator ? (
+                                <div data-sb-inside-band-anchor style={{ position: "relative", display: "inline-flex" }}>
+                                  <div style={{ border: "0.5px solid #e4e2db", borderRadius: 7, background: "#fff", overflow: "hidden", minWidth: 0 }}>
+                                    <div style={{ padding: "6px 8px" }}>
+                                      <div style={{ display: "inline-flex", alignItems: "stretch", border: `0.5px solid ${BADGE[row.indicator.type].border}`, borderRadius: 7, overflow: "hidden", background: "#fff", flexWrap: "wrap" }}>
+                                        <button
+                                          type="button"
+                                          data-sb-inside-band-anchor
+                                          onClick={() => setInsideBandPopoverRowId((id) => (id === row.id ? null : row.id))}
+                                          style={{ fontSize: 11.5, border: 0, borderRight: `1px solid ${BADGE[row.indicator.type].border}`, background: BADGE[row.indicator.type].bg, color: BADGE[row.indicator.type].text, borderRadius: 0, padding: "4px 9px", cursor: "pointer" }}
+                                        >
+                                          {row.indicator.kind}
+                                        </button>
+                                        {Object.keys(row.indicator.params || {})
+                                          .filter((k) => k !== "appliedTo")
+                                          .map((key) => (
+                                            <div key={`${row.id}-ib-${key}`} style={{ display: "inline-flex", alignItems: "stretch" }}>
+                                              <input
+                                                type="number"
+                                                aria-label={`${row.indicator.kind} ${key}`}
+                                                value={row.indicator.params[key] ?? ""}
+                                                onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                                  ...r,
+                                                  conditions: r.conditions.map((x) => x.id !== row.id || !x.indicator ? x : ({
+                                                    ...x,
+                                                    indicator: { ...x.indicator, params: { ...x.indicator.params, [key]: Number(e.target.value || 0) } },
+                                                  })),
+                                                })))}
+                                                style={{ height: 26, width: 56, border: 0, borderLeft: "0.5px solid #ece8de", background: "#fff", padding: "0 7px 0 8px", fontSize: 11.5, color: "#222", outline: "none", textAlign: "right", fontFamily: "monospace" }}
+                                              />
+                                              <span style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 5px 0 4px", borderLeft: "0.5px solid #ece8de", background: "#fff", fontSize: 9.5, color: "#9a968d", letterSpacing: "0.01em" }}>
+                                                {PARAM_UNIT[key] || key}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        <button
+                                          type="button"
+                                          aria-label={`Remove ${row.indicator.kind}`}
+                                          onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                            ...r,
+                                            conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, indicator: null, condition: null, value: null, secondIndicator: null })),
+                                          })))}
+                                          style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.indicator.type].border}`, background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {insideBandPopoverRowId === row.id ? (
+                                    <div
+                                      data-sb-inside-band-popover
+                                      style={{
+                                        position: "absolute",
+                                        left: 0,
+                                        top: "calc(100% + 6px)",
+                                        zIndex: 40,
+                                        background: "#fff",
+                                        border: "0.5px solid #e4e2db",
+                                        borderRadius: 8,
+                                        padding: "10px 12px",
+                                        boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+                                        minWidth: 220,
+                                      }}
+                                    >
+                                      <div style={{ fontSize: 10, fontWeight: 600, color: "#888", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Band zone</div>
+                                      {[
+                                        ["full", "Between upper and lower"],
+                                        ["upper_half", "Between middle and upper"],
+                                        ["lower_half", "Between lower and middle"],
+                                      ].map(([zid, zlab]) => (
+                                        <label key={zid} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 6, cursor: "pointer" }}>
+                                          <input
+                                            type="radio"
+                                            name={`band-zone-${row.id}`}
+                                            checked={(row.bandZone || "full") === zid}
+                                            onChange={() => {
+                                              setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                                ...r,
+                                                conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, bandZone: zid })),
+                                              })));
+                                              setInsideBandPopoverRowId(null);
+                                            }}
+                                          />
+                                          <span>{zlab}</span>
+                                        </label>
+                                      ))}
+                                      <button type="button" onClick={() => { openGlossary(row.indicator.kind); setInsideBandPopoverRowId(null); }} style={{ marginTop: 6, border: 0, background: "transparent", color: "#185FA5", fontSize: 11, cursor: "pointer", padding: 0 }}>
+                                        Open glossary…
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span style={{ background: "#f1efe8", border: "0.5px dashed #c8c6be", color: "#999", fontStyle: "italic", fontSize: 11, padding: "4px 10px", borderRadius: 7 }}>drop a Band indicator</span>
+                              )}
+                              <span style={{ fontSize: 11, color: "#888", padding: "0 4px" }}>is inside band</span>
+                              <button
+                                type="button"
+                                aria-label="Remove inside band condition"
+                                onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                  ...r,
+                                  conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, condition: null, value: null, secondIndicator: null, bandZone: "full" })),
+                                })))}
+                                style={{ border: 0, background: "transparent", color: "#aaa", fontSize: 14, lineHeight: 1, padding: "0 4px", cursor: "pointer" }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#888", paddingLeft: 2 }}>{BAND_ZONE_LABEL[row.bandZone || "full"]}</div>
+                          </div>
+                        ) : (
+                          <>
+                            {row.indicator ? (
+                              <div style={{ border: "0.5px solid #e4e2db", borderRadius: 7, background: "#fff", overflow: "hidden", minWidth: 220 }}>
+                                <div style={{ padding: "6px 8px" }}>
+                                  <div style={{ display: "inline-flex", alignItems: "stretch", border: `0.5px solid ${BADGE[row.indicator.type].border}`, borderRadius: 7, overflow: "hidden", background: "#fff" }}>
+                                    <button type="button" onClick={() => openGlossary(row.indicator.kind)} style={{ fontSize: 11.5, border: 0, borderRight: `1px solid ${BADGE[row.indicator.type].border}`, background: BADGE[row.indicator.type].bg, color: BADGE[row.indicator.type].text, borderRadius: 0, padding: "4px 9px" }}>
+                                      {row.indicator.kind}
+                                    </button>
+                                    {Object.keys(row.indicator.params || {})
+                                      .filter((k) => k !== "appliedTo")
+                                      .map((key) => (
+                                        <div key={`${row.id}-${key}`} style={{ display: "inline-flex", alignItems: "stretch" }}>
+                                          <input
+                                            type="number"
+                                            aria-label={`${row.indicator.kind} ${key}`}
+                                            value={row.indicator.params[key] ?? ""}
+                                            onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                              ...r,
+                                              conditions: r.conditions.map((x) => x.id !== row.id || !x.indicator ? x : ({
+                                                ...x,
+                                                indicator: { ...x.indicator, params: { ...x.indicator.params, [key]: Number(e.target.value || 0) } },
+                                              })),
+                                            })))}
+                                            style={{ height: 26, width: 56, border: 0, borderLeft: "0.5px solid #ece8de", background: "#fff", padding: "0 7px 0 8px", fontSize: 11.5, color: "#222", outline: "none", textAlign: "right", fontFamily: "monospace" }}
+                                          />
+                                          <span style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 5px 0 4px", borderLeft: "0.5px solid #ece8de", background: "#fff", fontSize: 9.5, color: "#9a968d", letterSpacing: "0.01em" }}>
+                                            {PARAM_UNIT[key] || key}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    {"appliedTo" in (row.indicator.params || {}) ? (
+                                      <select
+                                        aria-label={`${row.indicator.kind} applied to`}
+                                        value={row.indicator.params.appliedTo ?? "Close"}
                                         onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
                                           ...r,
                                           conditions: r.conditions.map((x) => x.id !== row.id || !x.indicator ? x : ({
                                             ...x,
-                                            indicator: { ...x.indicator, params: { ...x.indicator.params, [key]: Number(e.target.value || 0) } },
+                                            indicator: { ...x.indicator, params: { ...x.indicator.params, appliedTo: e.target.value } },
                                           })),
                                         })))}
-                                        style={{ height: 26, width: 56, border: 0, borderLeft: "0.5px solid #ece8de", background: "#fff", padding: "0 7px 0 8px", fontSize: 11.5, color: "#222", outline: "none", textAlign: "right", fontFamily: "monospace" }}
-                                      />
-                                      <span style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 5px 0 4px", borderLeft: "0.5px solid #ece8de", background: "#fff", fontSize: 9.5, color: "#9a968d", letterSpacing: "0.01em" }}>
-                                        {PARAM_UNIT[key] || key}
-                                      </span>
-                                    </div>
-                                  ))}
-                                {"appliedTo" in (row.indicator.params || {}) ? (
-                                  <select
-                                    aria-label={`${row.indicator.kind} applied to`}
-                                    value={row.indicator.params.appliedTo ?? "Close"}
-                                    onChange={(e) => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
-                                      ...r,
-                                      conditions: r.conditions.map((x) => x.id !== row.id || !x.indicator ? x : ({
-                                        ...x,
-                                        indicator: { ...x.indicator, params: { ...x.indicator.params, appliedTo: e.target.value } },
-                                      })),
-                                    })))}
-                                    style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.indicator.type].border}`, background: "#fffdf8", padding: "0 8px", fontSize: 11, color: "#444", outline: "none" }}
-                                  >
-                                    {["Close", "Open", "High", "Low"].map((v) => (
-                                      <option key={v} value={v}>{v}</option>
-                                    ))}
-                                  </select>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  aria-label={`Remove ${row.indicator.kind} indicator`}
-                                  onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
-                                    ...r,
-                                    conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, indicator: null, secondIndicator: null })),
-                                  })))}
-                                  style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.indicator.type].border}`, background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
-                                >
-                                  ×
-                                </button>
+                                        style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.indicator.type].border}`, background: "#fffdf8", padding: "0 8px", fontSize: 11, color: "#444", outline: "none" }}
+                                      >
+                                        {["Close", "Open", "High", "Low"].map((v) => (
+                                          <option key={v} value={v}>{v}</option>
+                                        ))}
+                                      </select>
+                                    ) : null}
+                                    <button
+                                      type="button"
+                                      aria-label={`Remove ${row.indicator.kind} indicator`}
+                                      onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
+                                        ...r,
+                                        conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, indicator: null, secondIndicator: null })),
+                                      })))}
+                                      style={{ height: 26, border: 0, borderLeft: `1px solid ${BADGE[row.indicator.type].border}`, background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        ) : null}
-                        {row.condition ? (
-                          row.condition === "two_indicators_cross" || row.condition === "inside_band"
-                            ? <div style={{ display: "inline-flex", alignItems: "stretch", border: "0.5px solid #AFA9EC", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
-                                <button type="button" onClick={() => openGlossary(row.condition)} style={{ fontSize: 11.5, border: 0, background: "#EEEDFE", color: "#3C3489", borderRadius: 0, padding: "4px 9px" }}>{CONDITIONS.find((x) => x.id === row.condition)?.label || row.condition}</button>
-                                <button
-                                  type="button"
-                                  aria-label="Remove condition"
-                                  onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
-                                    ...r,
-                                    conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, condition: null, value: null, secondIndicator: null })),
-                                  })))}
-                                  style={{ border: 0, borderLeft: "1px solid #cdc8f0", background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            : (
+                            ) : null}
+                            {row.condition ? (
                               <div style={{ display: "inline-flex", alignItems: "stretch", border: "1px solid #AFA9EC", borderRadius: 7, overflow: "hidden", background: "#fff" }}>
                                 <button type="button" onClick={() => openGlossary(row.condition)} style={{ fontSize: 11.5, border: 0, borderRight: "1px solid #cdc8f0", background: "#EEEDFE", color: "#3C3489", borderRadius: 0, padding: "4px 9px" }}>
                                   {CONDITIONS.find((x) => x.id === row.condition)?.label || row.condition}
@@ -791,17 +1412,16 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
                                   aria-label="Remove condition"
                                   onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({
                                     ...r,
-                                    conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, condition: null, value: null, secondIndicator: null })),
+                                    conditions: r.conditions.map((x) => x.id !== row.id ? x : ({ ...x, condition: null, value: null, secondIndicator: null, bandZone: "full" })),
                                   })))}
                                   style={{ border: 0, borderLeft: "1px solid #cdc8f0", background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
                                 >
                                   ×
                                 </button>
                               </div>
-                            )
-                        ) : null}
-                        {row.condition === "inside_band" ? <span style={{ fontSize: 11, color: "#666" }}>between upper and lower</span> : null}
-                        {row.condition === "two_indicators_cross" ? <button type="button" onClick={() => openGlossary(row.secondIndicator?.kind || "SMA")} style={{ fontSize: 11.5, border: `0.5px solid ${BADGE.line.border}`, background: BADGE.line.bg, color: BADGE.line.text, borderRadius: 6, padding: "4px 9px" }}>{row.secondIndicator?.kind || "Drop line indicator"}</button> : null}
+                            ) : null}
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -831,13 +1451,39 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
                     }}
                   >
                     {rule.action ? (
-                      <div style={{ display: "inline-flex", alignItems: "stretch", border: `0.5px solid ${rule.action.kind.startsWith("buy") ? BADGE.buy.border : BADGE.sell.border}`, borderRadius: 6, overflow: "hidden", background: "#fff" }}>
+                      <div style={{ display: "inline-flex", alignItems: "stretch", border: `0.5px solid ${rule.action.kind.startsWith("buy") ? BADGE.buy.border : BADGE.sell.border}`, borderRadius: 7, overflow: "hidden", background: "#fff" }}>
                         <button type="button" onClick={() => openGlossary(rule.action.kind)} style={{ fontSize: 11.5, border: 0, background: rule.action.kind.startsWith("buy") ? BADGE.buy.bg : BADGE.sell.bg, color: rule.action.kind.startsWith("buy") ? BADGE.buy.text : BADGE.sell.text, borderRadius: 0, padding: "4px 9px" }}>{ACTIONS.find((a) => a.kind === rule.action.kind)?.label || rule.action.kind}</button>
+                        {(rule.action.kind === "buy_percent_portfolio" || rule.action.kind === "sell_percent_position") ? (
+                          <>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={1}
+                              aria-label={rule.action.kind === "buy_percent_portfolio" ? "Percent of portfolio to allocate" : "Percent of position to sell"}
+                              value={Number(rule.action.params?.value ?? 50)}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const n = raw === "" ? 50 : Number(raw);
+                                const clamped = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 50;
+                                setRules((prev) => prev.map((r) => {
+                                  if (r.id !== rule.id || !r.action) return r;
+                                  return {
+                                    ...r,
+                                    action: { ...r.action, params: { ...r.action.params, value: clamped } },
+                                  };
+                                }));
+                              }}
+                              style={{ width: 56, border: 0, background: "#fff", fontSize: 11.5, textAlign: "right", fontFamily: "monospace", padding: "0 8px", outline: "none", height: 26 }}
+                            />
+                            <span style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 6px", borderLeft: "0.5px solid #ece8de", background: "#fff", fontSize: 9.5, color: "#9a968d" }}>%</span>
+                          </>
+                        ) : null}
                         <button
                           type="button"
                           aria-label="Remove action"
                           onClick={() => setRules((prev) => prev.map((r) => r.id !== rule.id ? r : ({ ...r, action: null })))}
-                          style={{ border: 0, borderLeft: "1px solid #d0cec8", background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
+                          style={{ border: 0, borderLeft: "0.5px solid #ece8de", background: "#fff", color: "#777", padding: "0 8px", fontSize: 12, cursor: "pointer" }}
                         >
                           ×
                         </button>
@@ -915,9 +1561,9 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
     <section style={{ paddingLeft: 16, minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontSize: 13, fontWeight: 500 }}>Code</div>
-        <button type="button" onClick={() => onExpandEditor?.()} style={{ border: "0.5px solid #d0cec8", borderRadius: 7, background: "#fff", padding: "7px 10px", fontSize: 12 }}>Expand</button>
+        <button type="button" className="backtest-expand-btn" onClick={() => onExpandEditor?.()}>Expand</button>
       </div>
-      <div style={{ background: TOKENS.summaryDark, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ marginBottom: 10, background: TOKENS.summaryDark, borderRadius: 10, overflow: "hidden" }}>
         <div style={{ background: "#252525", borderBottom: "0.5px solid #333", padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 10, color: "#888" }}>Auto-generated from rules · strategy.py</div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -943,6 +1589,28 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
             options={{ fontSize: 11.5, lineHeight: 19, minimap: { enabled: false }, readOnly: true, domReadOnly: true, scrollBeyondLastLine: false }}
           />
         </div>
+      </div>
+      <div
+        style={{
+          marginBottom: 10,
+          padding: "12px 14px",
+          borderRadius: 10,
+          border: TOKENS.cardBorder,
+          background: "#faf9f6",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)",
+        }}
+        aria-live="polite"
+      >
+        <div style={{ fontSize: 10, fontWeight: 600, color: "#888", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>How it reads</div>
+        {plainEnglishLines.length ? (
+          plainEnglishLines.map((line, i) => (
+            <p key={`pe-${i}-${line.slice(0, 24)}`} style={{ margin: i === 0 ? 0 : "10px 0 0", fontSize: 12.5, color: "#333", lineHeight: 1.6 }}>
+              {line}
+            </p>
+          ))
+        ) : (
+          <p style={{ margin: 0, fontSize: 12, color: "#888", fontStyle: "italic", lineHeight: 1.5 }}>Add rules in the workspace to see a plain-English walkthrough.</p>
+        )}
       </div>
       <div style={{ marginTop: 10, background: "#fff", border: TOKENS.cardBorder, borderRadius: 10, overflow: "hidden" }}>
         <div style={{ display: "flex", gap: 6, padding: 8, borderBottom: "0.5px solid #e4e2db", background: "#faf9f6" }}>
@@ -1050,29 +1718,191 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
                 const key = item.kind || item.id;
                 const active = detailKey === key;
                 const badge = kind === "indicator" ? BADGE[item.type] : kind === "action" ? BADGE[item.side] : kind === "risk" ? BADGE.risk : null;
+                const hoverHint = item.what || GLOSSARY[key]?.what || "Open glossary for block details.";
+
+                if (kind === "condition" && item.id === "two_indicators_cross") {
+                  const tcPayload = {
+                    kind: "condition",
+                    value: "two_indicators_cross",
+                    presetFirstKind: paletteTwoCross.first,
+                    presetSecondKind: paletteTwoCross.second,
+                  };
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        background: "#fff",
+                        border: active ? "0.5px solid #111" : TOKENS.cardBorder,
+                        borderRadius: 8,
+                        padding: "8px 10px 10px",
+                        marginBottom: 5,
+                        position: "relative",
+                      }}
+                      onMouseEnter={() => onSidebarHover(key, hoverHint)}
+                      onMouseLeave={clearSidebarHover}
+                    >
+                      <div
+                        draggable
+                        onDragStart={(e) => beginSidebarDrag(e, tcPayload)}
+                        onDragEnd={endSidebarDrag}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          if (isDraggingRef.current) return;
+                          openGlossary(key);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            if (!isDraggingRef.current) openGlossary(key);
+                          }
+                        }}
+                        style={{
+                          cursor: "grab",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: 8,
+                          gap: 6,
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500 }}>
+                          <span style={{ width: 3, height: 12, backgroundImage: "radial-gradient(#9a968f 0.8px, transparent 0.8px)", backgroundSize: "3px 3px", backgroundRepeat: "repeat-y" }} />
+                          {item.label}
+                        </span>
+                        <span style={{ fontSize: 9, borderRadius: 20, border: `0.5px solid ${BADGE.line.border}`, background: BADGE.line.bg, color: BADGE.line.text, padding: "1px 6px" }}>Condition</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ margin: 0, fontSize: 10, color: "#555", display: "flex", flexDirection: "column", gap: 3 }}>
+                          First line
+                          <select
+                            value={paletteTwoCross.first}
+                            onChange={(e) => setPaletteTwoCross((p) => ({ ...p, first: e.target.value }))}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            aria-label="Palette: first line for two indicators cross"
+                            style={{ fontSize: 11, padding: "5px 6px", borderRadius: 6, border: "0.5px solid #d0cec8", background: "#fff", width: "100%", boxSizing: "border-box" }}
+                          >
+                            {LINE_INDICATORS.map((ind) => (
+                              <option key={ind.kind} value={ind.kind}>{ind.kind}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label style={{ margin: 0, fontSize: 10, color: "#555", display: "flex", flexDirection: "column", gap: 3 }}>
+                          Second line
+                          <select
+                            value={paletteTwoCross.second}
+                            onChange={(e) => setPaletteTwoCross((p) => ({ ...p, second: e.target.value }))}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            aria-label="Palette: second line for two indicators cross"
+                            style={{ fontSize: 11, padding: "5px 6px", borderRadius: 6, border: "0.5px solid #d0cec8", background: "#fff", width: "100%", boxSizing: "border-box" }}
+                          >
+                            {LINE_INDICATORS.map((ind) => (
+                              <option key={`p2-${ind.kind}`} value={ind.kind}>{ind.kind}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <p style={{ margin: "8px 0 0", fontSize: 9.5, color: "#888", lineHeight: 1.35 }}>Drag the title row to add with these lines.</p>
+                      {tooltip.key === key ? <div style={{ position: "absolute", left: "calc(100% + 8px)", top: "50%", transform: "translateY(-50%)", background: "#1a1a1a", color: "#fff", fontSize: 10, borderRadius: 6, padding: 8, maxWidth: 200, zIndex: 30 }}>{tooltip.text}</div> : null}
+                    </div>
+                  );
+                }
+
+                if (kind === "condition" && item.id === "inside_band") {
+                  const ibPayload = {
+                    kind: "condition",
+                    value: "inside_band",
+                    presetBandKind: paletteInsideBand.kind,
+                    presetParams: { period: Number(paletteInsideBand.period) || 20 },
+                  };
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        background: "#fff",
+                        border: active ? "0.5px solid #111" : TOKENS.cardBorder,
+                        borderRadius: 8,
+                        padding: "8px 10px 10px",
+                        marginBottom: 5,
+                        position: "relative",
+                      }}
+                      onMouseEnter={() => onSidebarHover(key, hoverHint)}
+                      onMouseLeave={clearSidebarHover}
+                    >
+                      <div
+                        draggable
+                        onDragStart={(e) => beginSidebarDrag(e, ibPayload)}
+                        onDragEnd={endSidebarDrag}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          if (isDraggingRef.current) return;
+                          openGlossary(key);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            if (!isDraggingRef.current) openGlossary(key);
+                          }
+                        }}
+                        style={{
+                          cursor: "grab",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: 8,
+                          gap: 6,
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500 }}>
+                          <span style={{ width: 3, height: 12, backgroundImage: "radial-gradient(#9a968f 0.8px, transparent 0.8px)", backgroundSize: "3px 3px", backgroundRepeat: "repeat-y" }} />
+                          {item.label}
+                        </span>
+                        <span style={{ fontSize: 9, borderRadius: 20, border: `0.5px solid ${BADGE.band.border}`, background: BADGE.band.bg, color: BADGE.band.text, padding: "1px 6px" }}>Band</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ margin: 0, fontSize: 10, color: "#555", display: "flex", flexDirection: "column", gap: 3 }}>
+                          Band
+                          <select
+                            value={paletteInsideBand.kind}
+                            onChange={(e) => setPaletteInsideBand((p) => ({ ...p, kind: e.target.value }))}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            aria-label="Palette: band for inside band condition"
+                            style={{ fontSize: 11, padding: "5px 6px", borderRadius: 6, border: "0.5px solid #d0cec8", background: "#fff", width: "100%", boxSizing: "border-box" }}
+                          >
+                            {BAND_INDICATORS.map((ind) => (
+                              <option key={ind.kind} value={ind.kind}>{ind.kind}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label style={{ margin: 0, fontSize: 10, color: "#555", display: "flex", flexDirection: "column", gap: 3 }}>
+                          Period (bars)
+                          <input
+                            type="number"
+                            min={1}
+                            value={paletteInsideBand.period}
+                            onChange={(e) => setPaletteInsideBand((p) => ({ ...p, period: Number(e.target.value) || 1 }))}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            aria-label="Palette: band period for inside band"
+                            style={{ fontSize: 11, padding: "5px 6px", borderRadius: 6, border: "0.5px solid #d0cec8", background: "#fff", width: "100%", boxSizing: "border-box", fontFamily: "monospace" }}
+                          />
+                        </label>
+                      </div>
+                      <p style={{ margin: "8px 0 0", fontSize: 9.5, color: "#888", lineHeight: 1.35 }}>Drag the title row to add with this band.</p>
+                      {tooltip.key === key ? <div style={{ position: "absolute", left: "calc(100% + 8px)", top: "50%", transform: "translateY(-50%)", background: "#1a1a1a", color: "#fff", fontSize: 10, borderRadius: 6, padding: 8, maxWidth: 200, zIndex: 30 }}>{tooltip.text}</div> : null}
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={key} draggable
-                    onDragStart={(e) => {
-                      isDraggingRef.current = true;
-                      const payload = { kind, value: key };
-                      dragPayloadRef.current = payload;
-                      const serialized = JSON.stringify(payload);
-                      e.dataTransfer.setData("application/json", serialized);
-                      e.dataTransfer.setData("text/plain", serialized);
-                      e.dataTransfer.setData("text/x-action-kind", key);
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                    onDragEnd={() => {
-                      dragPayloadRef.current = null;
-                      setTimeout(() => {
-                        isDraggingRef.current = false;
-                      }, 0);
-                    }}
+                    onDragStart={(e) => beginSidebarDrag(e, { kind, value: key })}
+                    onDragEnd={endSidebarDrag}
                     onClick={() => {
                       if (isDraggingRef.current) return;
                       openGlossary(key);
                     }}
-                    onMouseEnter={() => onSidebarHover(key, item.what || "Open glossary for block details.")}
+                    onMouseEnter={() => onSidebarHover(key, hoverHint)}
                     onMouseLeave={clearSidebarHover}
                     style={{ background: "#fff", border: active ? "0.5px solid #111" : TOKENS.cardBorder, borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 500, marginBottom: 5, display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative", cursor: "grab" }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1208,6 +2038,11 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
         {codeCol}
       </div>
       {glossaryOverlay}
+      {dropTip ? (
+        <div role="status" style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100, background: "#1a1a1a", color: "#fff", padding: "10px 14px", borderRadius: 8, fontSize: 12, maxWidth: 380, boxShadow: "0 4px 24px rgba(0,0,0,0.15)", lineHeight: 1.45 }}>
+          {dropTip}
+        </div>
+      ) : null}
     </div>
   );
 

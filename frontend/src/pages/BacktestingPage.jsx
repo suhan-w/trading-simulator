@@ -14,6 +14,7 @@ import {
 } from "../components/BacktestCharts";
 import { api } from "../api/client";
 import LeaderboardPage from "./LeaderboardPage";
+import { cowrieEditorTheme } from "../constants/cowrieCodeMirrorTheme";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
 import { TRADE_STRATEGY_REMINDER_KEY } from "../constants/tradeReminder";
 import { pushBacktestRunHistory } from "../constants/backtestRunHistoryStorage";
@@ -135,6 +136,8 @@ export default function BacktestingPage() {
       document.body.style.overflow = prev;
     };
   }, [expandedChart, expandedCode]);
+
+  const expandedCodeMirrorExtensions = useMemo(() => [python(), cowrieEditorTheme], []);
 
   const openExpanded = useCallback((key) => setExpandedChart(key), []);
 
@@ -547,7 +550,7 @@ export default function BacktestingPage() {
         ? createPortal(
             <div className="backtest-chart-expand-overlay" role="presentation" onClick={() => setExpandedCode(false)}>
               <div
-                className="backtest-chart-expand-dialog"
+                className="backtest-chart-expand-dialog backtest-code-expand-dialog"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="backtest-code-expand-title"
@@ -570,9 +573,11 @@ export default function BacktestingPage() {
                   <CodeMirror
                     value={code}
                     height="min(82vh, 820px)"
-                    extensions={[python()]}
+                    extensions={expandedCodeMirrorExtensions}
                     onChange={setCode}
-                    theme="dark"
+                    theme="none"
+                    basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
+                    className="overflow-hidden rounded-lg border border-ink/[0.08] text-left shadow-card-sm"
                   />
                 </div>
               </div>

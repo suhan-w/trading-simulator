@@ -1,33 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { EditorView } from "@codemirror/view";
 import { python } from "@codemirror/lang-python";
 import CodeMirror from "@uiw/react-codemirror";
 import SectionHeading from "../components/SectionHeading";
 import { EXAMPLE_MA_CROSSOVER } from "../data/exampleStrategies";
 import StrategyBuilder from "../components/StrategyBuilder";
 import PlainEnglishBar, { toPlainEnglishAdvanced, toPlainEnglishSimple } from "../components/strategyBuilder/PlainEnglishBar";
+import { cowrieEditorTheme } from "../constants/cowrieCodeMirrorTheme";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
 import { loadVisualStrategies, saveVisualStrategies, VISUAL_SAVED_STRATEGIES_MAX } from "../constants/visualStrategyStorage";
 
 const DEFAULT_TICKER = "CBA.AX";
 const DEFAULT_START = new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().slice(0, 10);
 const DEFAULT_END = new Date().toISOString().slice(0, 10);
-
-const cowrieEditorTheme = EditorView.theme(
-  {
-    "&": { minHeight: "min(52vh, 520px)", backgroundColor: "#ffffff", color: "#111111" },
-    ".cm-scroller": { fontFamily: "JetBrains Mono, ui-monospace, monospace", overflow: "auto" },
-    ".cm-content, .cm-gutter": { fontSize: "13px", lineHeight: "1.5" },
-    ".cm-gutters": {
-      backgroundColor: "#f5f3ef",
-      color: "#aaaaaa",
-      borderRight: "1px solid rgba(17,17,17,0.06)",
-    },
-  },
-  { dark: false }
-);
 
 export default function StrategyPage() {
   const navigate = useNavigate();
