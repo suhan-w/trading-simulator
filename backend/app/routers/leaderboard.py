@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -29,6 +30,21 @@ _CAT_TITLES = {
     "drawdown": "Lowest Max Drawdown",
     "trades": "Most Active",
 }
+
+
+def _strategy_display_label(e: LeaderboardEntry) -> str:
+    raw = (e.strategy_visual_json or "").strip()
+    if raw:
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict):
+                for key in ("name", "title", "strategyName"):
+                    v = obj.get(key)
+                    if isinstance(v, str) and v.strip():
+                        return v.strip()
+        except Exception:
+            pass
+    return f"Strategy #{int(e.strategy_seq or 0):03d}"
 
 
 def _fmt_value(cat: str, e: LeaderboardEntry) -> tuple[float, str]:
@@ -87,7 +103,7 @@ def leaderboard_bundle(
                     id=e.id,
                     anon_id=e.anon_id,
                     strategy_seq=int(e.strategy_seq or 0),
-                    strategy_label=f"Strategy #{int(e.strategy_seq or 0):03d}",
+                    strategy_label=_strategy_display_label(e),
                     source=e.source,
                     ticker=e.ticker,
                     period_start=e.period_start,
@@ -217,7 +233,7 @@ def get_entry_detail(
         id=e.id,
         anon_id=e.anon_id,
         strategy_seq=int(e.strategy_seq or 0),
-        strategy_label=f"Strategy #{int(e.strategy_seq or 0):03d}",
+        strategy_label=_strategy_display_label(e),
         ticker=e.ticker,
         source=e.source,
         period_start=e.period_start,

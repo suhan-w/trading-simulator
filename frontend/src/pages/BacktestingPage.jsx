@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
@@ -18,7 +18,8 @@ import { cowrieEditorTheme } from "../constants/cowrieCodeMirrorTheme";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
 import { TRADE_STRATEGY_REMINDER_KEY } from "../constants/tradeReminder";
 import { pushBacktestRunHistory } from "../constants/backtestRunHistoryStorage";
-import { loadVisualStrategies } from "../constants/visualStrategyStorage";
+import { loadVisualStrategies, saveVisualStrategies } from "../constants/visualStrategyStorage";
+import { loadStrategyBasket, saveStrategyBasket } from "../constants/strategyBasketStorage";
 import { translateRulesToPython, translateVisualBlocksToPython } from "../utils/strategyBuilderTranslate";
 import { makeTemplateSimpleRules, templateTitle } from "../constants/strategyTemplates";
 
@@ -36,6 +37,10 @@ function fmtPct(x, digits = 2) {
   return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`;
 }
 
+function normalizeCodeText(s) {
+  return String(s || "").replace(/\r\n/g, "\n").trim();
+}
+
 function MetricCard({ label, value, hint }) {
   return (
     <div className="backtest-metric-card">
@@ -48,6 +53,7 @@ function MetricCard({ label, value, hint }) {
 
 export default function BacktestingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [tab, setTab] = useState("backtest");
   const { start: defaultStart, end: defaultEnd } = useMemo(() => defaultRange(), []);
   const [ticker, setTicker] = useState("CBA.AX");
@@ -57,12 +63,25 @@ export default function BacktestingPage() {
   const [strategySource, setStrategySource] = useState({ loaded: false, name: "", fromStrategyPage: false });
   const [basketOpen, setBasketOpen] = useState(true);
   const [savedStrategies, setSavedStrategies] = useState(() => loadVisualStrategies());
+  const [savedCodeStrategies, setSavedCodeStrategies] = useState(() => loadStrategyBasket());
+  const [selectedSavedCode, setSelectedSavedCode] = useState(null);
+  const [selectedSavedVisual, setSelectedSavedVisual] = useState(null);
+  const [saveCodeDraftName, setSaveCodeDraftName] = useState("");
+  const [saveCodeFeedback, setSaveCodeFeedback] = useState("");
   /** @type {[null | "vs" | "signals" | "drawdown" | "daily", (v: null | "vs" | "signals" | "drawdown" | "daily") => void]} */
   const [expandedChart, setExpandedChart] = useState(null);
   const [expandedCode, setExpandedCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    const qp = new URLSearchParams(location.search);
+    const requested = qp.get("tab");
+    if (requested === "backtest" || requested === "leaderboard") {
+      setTab(requested);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     try {
@@ -72,6 +91,8 @@ export default function BacktestingPage() {
       const p = JSON.parse(raw);
       if (typeof p?.code === "string" && p.code.trim()) {
         setCode(p.code);
+        setSelectedSavedCode(null);
+        setSelectedSavedVisual(null);
       }
       const name = typeof p?.strategyName === "string" ? p.strategyName.trim() : "";
       const fromStrategyPage = p?.source === "strategy";
@@ -100,7 +121,25 @@ export default function BacktestingPage() {
     setResult(null);
     setLoading(true);
     try {
-      const body = { code, ticker: ticker.trim().toUpperCase(), start, end };
+      const normalized = normalizeCodeText(code);
+      let visual_json = null;
+      const savedCodeMatch = selectedSavedCode?.id
+        ? savedCodeStrategies.find((x) => x.id === selectedSavedCode.id) || null
+        : savedCodeStrategies.find((x) => normalizeCodeText(x.code) === normalized) || null;
+      if (savedCodeMatch) {
+        visual_json = JSON.stringify({
+          source: "saved_code_basket",
+          id: savedCodeMatch.id,
+          name: savedCodeMatch.title,
+        });
+      } else if (selectedSavedVisual?.id) {
+        visual_json = JSON.stringify({
+          source: "saved_visual_basket",
+          id: selectedSavedVisual.id,
+          name: selectedSavedVisual.title,
+        });
+      }
+      const body = { code, ticker: ticker.trim().toUpperCase(), start, end, visual_json };
       const data = await api.runCodeBacktest(body);
       setResult(data);
       pushBacktestRunHistory({
@@ -116,9 +155,96 @@ export default function BacktestingPage() {
     } finally {
       setLoading(false);
     }
-  }, [code, ticker, start, end]);
+  }, [code, ticker, start, end, savedCodeStrategies, selectedSavedCode, selectedSavedVisual]);
+
+  const handleEditorCodeChange = useCallback((value) => {
+    setCode(value);
+    setSelectedSavedCode(null);
+    setSelectedSavedVisual(null);
+  }, []);
 
   const m = result?.metrics;
+  const canSaveCodeToBasket = Boolean(result && code.trim());
+
+  const saveCurrentCodeToBasket = useCallback(() => {
+    if (!canSaveCodeToBasket) return;
+    const normalizedCode = normalizeCodeText(code);
+    const duplicateByCode = savedCodeStrategies.some((x) => normalizeCodeText(x.code) === normalizedCode);
+    if (duplicateByCode) {
+      setSaveCodeFeedback("This strategy code is already saved.");
+      return;
+    }
+    const requestedTitle = saveCodeDraftName.trim();
+    if (!requestedTitle) {
+      setSaveCodeFeedback("Please enter a strategy name.");
+      return;
+    }
+    setSavedCodeStrategies((prev) => {
+      const existingTitles = new Set(prev.map((x) => (x.title || "").toLowerCase()));
+      let title = requestedTitle;
+      let suffix = 2;
+      while (existingTitles.has(title.toLowerCase())) {
+        title = `${requestedTitle} (${suffix})`;
+        suffix += 1;
+      }
+      const newItem = { id: crypto.randomUUID(), title, code: normalizedCode, savedAt: new Date().toISOString() };
+      const next = [newItem, ...prev].slice(0, 30);
+      setSelectedSavedCode({ id: newItem.id, title: newItem.title });
+      setSelectedSavedVisual(null);
+      saveStrategyBasket(next);
+      return next;
+    });
+    setSaveCodeFeedback("Saved to Strategy Basket.");
+    setSaveCodeDraftName("");
+  }, [canSaveCodeToBasket, code, saveCodeDraftName, savedCodeStrategies]);
+
+  const removeSavedCodeStrategy = useCallback((id) => {
+    setSavedCodeStrategies((prev) => {
+      const next = prev.filter((x) => x.id !== id);
+      saveStrategyBasket(next);
+      return next;
+    });
+    setSaveCodeFeedback("Removed from Strategy Basket.");
+  }, []);
+
+  const renameSavedCodeStrategy = useCallback((id) => {
+    setSavedCodeStrategies((prev) => {
+      const target = prev.find((x) => x.id === id);
+      if (!target) return prev;
+      const requested = saveCodeDraftName.trim();
+      if (!requested) {
+        setSaveCodeFeedback("Please enter a strategy name.");
+        return prev;
+      }
+      const existing = new Set(prev.filter((x) => x.id !== id).map((x) => (x.title || "").toLowerCase()));
+      let title = requested;
+      let suffix = 2;
+      while (existing.has(title.toLowerCase())) {
+        title = `${requested} (${suffix})`;
+        suffix += 1;
+      }
+      const next = prev.map((x) => (x.id === id ? { ...x, title } : x));
+      saveStrategyBasket(next);
+      setSaveCodeFeedback("Saved strategy renamed.");
+      setSaveCodeDraftName("");
+      return next;
+    });
+  }, [saveCodeDraftName]);
+
+  const removeSavedVisualStrategy = useCallback((id) => {
+    setSavedStrategies((prev) => {
+      const next = prev.filter((x) => x.id !== id);
+      saveVisualStrategies(next);
+      return next;
+    });
+    setSaveCodeFeedback("Removed from saved strategies.");
+  }, []);
+
+  useEffect(() => {
+    if (!saveCodeFeedback) return undefined;
+    const t = setTimeout(() => setSaveCodeFeedback(""), 2000);
+    return () => clearTimeout(t);
+  }, [saveCodeFeedback]);
 
   useEffect(() => {
     if (!expandedChart && !expandedCode) return undefined;
@@ -232,8 +358,9 @@ export default function BacktestingPage() {
                 </div>
                 <div className="min-w-0 border-t border-ink/[0.06] px-4 py-3">
                   <div className="backtest-code-editor">
-                    <CodeMirror value={code} height="280px" extensions={[python()]} onChange={setCode} theme="dark" />
+                    <CodeMirror value={code} height="280px" extensions={[python()]} onChange={handleEditorCodeChange} theme="dark" />
                   </div>
+                  <p className="mb-0 mt-2 text-[11px] text-muted">Paste or type your own Python `run(data)` strategy code here.</p>
                 </div>
               </div>
 
@@ -279,6 +406,74 @@ export default function BacktestingPage() {
                 {basketOpen ? (
                   <div id="backtest-basket-panel" role="region" aria-labelledby="backtest-basket-toggle" className="strategy-basket-panel">
                     <div className="space-y-2">
+                      <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Current backtest code</p>
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] font-medium text-muted">Strategy name</span>
+                        <input
+                          type="text"
+                          value={saveCodeDraftName}
+                          onChange={(e) => setSaveCodeDraftName(e.target.value)}
+                          className="w-full rounded-md border border-ink/[0.16] bg-card px-3 py-2 text-[13px] text-ink outline-none focus:border-ink/50"
+                          placeholder="Enter strategy name"
+                        />
+                      </label>
+                      <div className="backtest-example-pills">
+                        <button
+                          type="button"
+                          className="strategy-pill strategy-pill--saved"
+                          onClick={saveCurrentCodeToBasket}
+                          disabled={!canSaveCodeToBasket}
+                          title={canSaveCodeToBasket ? "Save tested code into Strategy Basket" : "Run a successful backtest first"}
+                        >
+                          {canSaveCodeToBasket ? "Save current code to basket" : "Run successful backtest to save"}
+                        </button>
+                      </div>
+                      {saveCodeFeedback ? <p className="m-0 text-[11px] text-[#2d8a55]">{saveCodeFeedback}</p> : null}
+                    </div>
+
+                    {savedCodeStrategies.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Saved code strategies</p>
+                        <div className="backtest-example-pills">
+                          {savedCodeStrategies.map((item) => (
+                            <div key={item.id} className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="strategy-pill strategy-pill--saved"
+                                onClick={() => {
+                                  setCode(item.code);
+                                  setSelectedSavedCode({ id: item.id, title: item.title });
+                                  setSelectedSavedVisual(null);
+                                  setStrategySource({ loaded: false, name: item.title, fromStrategyPage: false });
+                                  setBasketOpen(false);
+                                }}
+                              >
+                                {item.title}
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Rename saved strategy ${item.title}`}
+                                className="h-7 w-7 rounded-full border border-ink/[0.16] bg-card text-[12px] leading-none text-muted hover:border-ink/40 hover:text-ink"
+                                onClick={() => renameSavedCodeStrategy(item.id)}
+                                title="Rename using Strategy name field above"
+                              >
+                                ✎
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Remove saved strategy ${item.title}`}
+                                className="h-7 w-7 rounded-full border border-ink/[0.16] bg-card text-[12px] leading-none text-muted hover:border-danger/40 hover:text-danger"
+                                onClick={() => removeSavedCodeStrategy(item.id)}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2">
                       <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Built-in templates</p>
                       <div className="backtest-example-pills">
                         {["ma", "rsi", "bh"].map((key) => (
@@ -290,6 +485,8 @@ export default function BacktestingPage() {
                               const simpleRules = makeTemplateSimpleRules(key);
                               const py = translateRulesToPython(simpleRules, [], "simple", { ticker, start, end });
                               setCode(py);
+                              setSelectedSavedCode(null);
+                              setSelectedSavedVisual(null);
                               setStrategySource({ loaded: false, name: templateTitle(key), fromStrategyPage: false });
                             }}
                           >
@@ -304,19 +501,30 @@ export default function BacktestingPage() {
                         <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-muted">Saved strategies</p>
                         <div className="backtest-example-pills">
                           {savedStrategies.map((item) => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="strategy-pill strategy-pill--saved"
-                              onClick={() => {
-                                const py = translateVisualBlocksToPython(item.blocks, { ticker, start, end });
-                                setCode(py);
-                                setStrategySource({ loaded: false, name: item.title, fromStrategyPage: false });
-                                setBasketOpen(false);
-                              }}
-                            >
-                              {item.title}
-                            </button>
+                            <div key={item.id} className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="strategy-pill strategy-pill--saved"
+                                onClick={() => {
+                                  const py = translateVisualBlocksToPython(item.blocks, { ticker, start, end });
+                                  setCode(py);
+                                  setSelectedSavedCode(null);
+                                  setSelectedSavedVisual({ id: item.id, title: item.title });
+                                  setStrategySource({ loaded: false, name: item.title, fromStrategyPage: false });
+                                  setBasketOpen(false);
+                                }}
+                              >
+                                {item.title}
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Remove saved strategy ${item.title}`}
+                                className="h-7 w-7 rounded-full border border-ink/[0.16] bg-card text-[12px] leading-none text-muted hover:border-danger/40 hover:text-danger"
+                                onClick={() => removeSavedVisualStrategy(item.id)}
+                              >
+                                ×
+                              </button>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -574,7 +782,7 @@ export default function BacktestingPage() {
                     value={code}
                     height="min(82vh, 820px)"
                     extensions={expandedCodeMirrorExtensions}
-                    onChange={setCode}
+                    onChange={handleEditorCodeChange}
                     theme="none"
                     basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
                     className="overflow-hidden rounded-lg border border-ink/[0.08] text-left shadow-card-sm"

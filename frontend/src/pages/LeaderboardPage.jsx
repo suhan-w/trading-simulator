@@ -154,6 +154,27 @@ export default function LeaderboardPage() {
   const [detail, setDetail] = useState(null);
   const [toast, setToast] = useState("");
 
+  const loadStrategyLabBundle = useCallback(() => {
+    let done = false;
+    setBundleLoading(true);
+    setBundleError("");
+    const today = new Date().toISOString().slice(0, 10);
+    api
+      .leaderboard("2000-01-01", today)
+      .then((b) => {
+        if (!done) setBundle(b);
+      })
+      .catch((e) => {
+        if (!done) setBundleError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!done) setBundleLoading(false);
+      });
+    return () => {
+      done = true;
+    };
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_TAB, mainTab);
@@ -186,25 +207,12 @@ export default function LeaderboardPage() {
     }
   }, [strategyLabCat]);
 
+  useEffect(() => loadStrategyLabBundle(), [loadStrategyLabBundle]);
+
   useEffect(() => {
-    let done = false;
-    setBundleLoading(true);
-    const today = new Date().toISOString().slice(0, 10);
-    api
-      .leaderboard("2000-01-01", today)
-      .then((b) => {
-        if (!done) setBundle(b);
-      })
-      .catch((e) => {
-        if (!done) setBundleError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!done) setBundleLoading(false);
-      });
-    return () => {
-      done = true;
-    };
-  }, []);
+    if (mainTab !== "strategy-lab") return undefined;
+    return loadStrategyLabBundle();
+  }, [mainTab, loadStrategyLabBundle]);
 
   useEffect(() => {
     if (mainTab !== "community" || communitySubTab !== "monthly") return undefined;
@@ -360,8 +368,8 @@ export default function LeaderboardPage() {
     } catch {
       /* ignore */
     }
-    setToast("Strategy copied to your Strategy page");
-    navigate("/strategy");
+    setToast("Strategy copied to your Backtesting editor");
+    navigate("/backtesting?tab=backtest");
   }, [detail, navigate]);
 
   const windowPills = [
@@ -724,7 +732,7 @@ export default function LeaderboardPage() {
               basicSetup={{ lineNumbers: true }}
             />
             <button type="button" className="lb-copy-btn" onClick={copyToStrategy}>
-              Copy to my Strategy page
+              Copy to my Backtesting editor
             </button>
           </>
         ) : selected ? (

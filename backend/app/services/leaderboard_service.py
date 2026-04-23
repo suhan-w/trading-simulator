@@ -93,11 +93,20 @@ def _strategy_dedupe_key(entry: LeaderboardEntry) -> tuple[str, str] | None:
     return None
 
 
+def _is_saved_strategy_entry(entry: LeaderboardEntry) -> bool:
+    """Strategy Lab only shows runs linked to a saved visual strategy."""
+    if entry.source != SOURCE_BACKTEST:
+        return False
+    return bool(_normalize_strategy_text(entry.strategy_visual_json))
+
+
 def public_distinct_in_range(db: Session, range_start: date, range_end: date) -> list[LeaderboardEntry]:
     rows = public_in_range(db, range_start, range_end).order_by(LeaderboardEntry.id.desc()).all()
     out: list[LeaderboardEntry] = []
     seen: set[tuple[str, str]] = set()
     for e in rows:
+        if not _is_saved_strategy_entry(e):
+            continue
         k = _strategy_dedupe_key(e)
         if k is None:
             out.append(e)
@@ -121,6 +130,7 @@ def create_backtest_entry(
 ) -> LeaderboardEntry:
     m = metrics or {}
     tr = m.get("total_return_pct")
+    visual_saved = bool(_normalize_strategy_text(visual_json))
     user = db.query(User).filter(User.id == user_id).first()
     strategy_seq = 0
     if user is not None:
@@ -138,8 +148,8 @@ def create_backtest_entry(
         max_drawdown_pct=float(m["max_drawdown_pct"]) if m.get("max_drawdown_pct") is not None else None,
         win_rate_pct=float(m["win_rate_pct"]) if m.get("win_rate_pct") is not None else None,
         trade_count=int(m.get("trade_count") or 0),
-        # Backtests are included on leaderboard automatically (no opt-in).
-        share_public=True,
+        # Strategy Lab only includes runs tied to a saved visual strategy.
+        share_public=visual_saved,
         strategy_code=(code or "")[:100_000] or None,
         strategy_visual_json=(visual_json or "")[:500_000] if visual_json else None,
     )
