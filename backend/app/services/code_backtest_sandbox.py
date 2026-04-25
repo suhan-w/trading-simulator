@@ -7,6 +7,7 @@ import math
 import multiprocessing
 import queue
 import traceback
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import date, timedelta
 from typing import Any
 
@@ -16,6 +17,8 @@ import pandas as pd
 ALLOWED_IMPORT_ROOTS = frozenset({"yfinance", "pandas", "numpy", "matplotlib"})
 MAX_CODE_CHARS = 100_000
 BACKTEST_TIMEOUT_SEC = 55
+# yfinance can block indefinitely; run in a thread with a hard cap (main process, before the sandbox).
+YFIN_FETCH_TIMEOUT_SEC = 50
 BENCHMARK_SYMBOL = "^AXJO"
 
 
@@ -152,7 +155,7 @@ def _ensure_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def fetch_yfinance_pair(
+def _fetch_yfinance_pair_impl(
     symbol: str,
     start: date,
     end: date,
@@ -169,6 +172,25 @@ def fetch_yfinance_pair(
     if b is None or b.empty:
         raise ValueError("Could not load ASX 200 benchmark (^AXJO). Try a different date range.")
     return _ensure_ohlcv(p), _ensure_ohlcv(b)
+
+
+def fetch_yfinance_pair(
+    symbol: str,
+    start: date,
+    end: date,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ex: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
+    try:
+        fut = ex.submit(_fetch_yfinance_pair_impl, symbol, start, end)
+        try:
+            return fut.result(timeout=YFIN_FETCH_TIMEOUT_SEC)
+        except FutureTimeout:
+            raise ValueError(
+                f"Loading market data timed out after {YFIN_FETCH_TIMEOUT_SEC}s. "
+                "Check your network, or try a shorter date range."
+            ) from None
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
 
 
 def _normalize_user_result(

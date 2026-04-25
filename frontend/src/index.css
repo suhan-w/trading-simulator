@@ -20,6 +20,31 @@
   margin-bottom: 24px;
 }
 
+.backtest-page-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.backtest-page-heading {
+  margin-bottom: 0;
+}
+
+.backtest-page-heading .page-subtitle {
+  white-space: normal;
+  overflow: visible;
+}
+
+.backtest-tabs.backtest-tabs--header {
+  margin-bottom: 0;
+  margin-left: auto;
+  justify-content: flex-end;
+  align-self: center;
+  flex-shrink: 0;
+}
+
 .backtest-lb-share-wrap {
   margin-bottom: 20px;
   max-width: 100%;
@@ -49,6 +74,20 @@
   background: #111;
   color: #fff;
   border-color: #111;
+}
+
+@media (max-width: 900px) {
+  .backtest-page-header-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .backtest-tabs.backtest-tabs--header {
+    margin-left: 0;
+    justify-content: flex-start;
+    align-self: flex-start;
+  }
 }
 
 .strategy-page {

@@ -327,7 +327,7 @@ export default function LeaderboardPage() {
       return "Make 10 trades to appear on the all-time leaderboard.";
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+      return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
     }
     if (y.banner_kind === "no_overlap") {
       return "No qualifying paper snapshot for this time window.";
@@ -345,12 +345,12 @@ export default function LeaderboardPage() {
       return `Make ${y.min_trades} trades this month to appear on the leaderboard. You have ${y.trades_this_month} so far.`;
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+      return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
     }
     if (y.banner_kind === "no_paper" || y.banner_kind === "no_baseline") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+      return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
     }
-    return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+    return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
   }, [monthly]);
 
   const copyToStrategy = useCallback(() => {
@@ -596,7 +596,8 @@ export default function LeaderboardPage() {
                   </div>
                 </section>
                 <p className="lb-opt-out-note">
-                  Your performance is visible to the community. Turn off “Share this strategy anonymously on the leaderboard” on Account or Backtesting to opt out.
+                  Your performance is visible to the community. Set your paper account to Private on Account (or use the
+                  Backtesting quick toggle) to opt out.
                 </p>
               </>
             ) : null
