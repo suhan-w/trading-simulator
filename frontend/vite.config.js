@@ -4,6 +4,11 @@ import react from "@vitejs/plugin-react";
 /** Dev: browser calls same origin `/api/*` → proxied to FastAPI (avoids CORS when using LAN IP or 127.0.0.1). */
 const apiTarget = process.env.VITE_PROXY_API || "http://127.0.0.1:8000";
 
+const cowrieClientBundle = () =>
+  process.env.VITE_COWRIE_BUNDLE_STAMP ||
+  process.env.CACHEBUST ||
+  new Date().toISOString();
+
 /** Hint caches not to treat the SPA shell as long-lived; hashed /assets/* stay immutable. */
 function htmlCacheHintsPlugin() {
   return {
@@ -17,6 +22,10 @@ function htmlCacheHintsPlugin() {
 }
 
 export default defineConfig({
+  /* Shipped to the browser so you can confirm a fresh build (e.g. hover “Strategy Basket” for full stamp or see basket hint). */
+  define: {
+    "import.meta.env.VITE_COWRIE_BUNDLE": JSON.stringify(cowrieClientBundle()),
+  },
   plugins: [react(), htmlCacheHintsPlugin()],
   server: {
     port: 5173,

@@ -1,5 +1,15 @@
 import { ENTRY_ACTIONS, EXIT_ACTIONS, RISK_ACTIONS } from "../types/strategyRules";
 
+let lastPaletteDragType = null;
+
+export function setLastPaletteDragType(type) {
+  lastPaletteDragType = typeof type === "string" && type ? type : null;
+}
+
+export function clearLastPaletteDragType() {
+  lastPaletteDragType = null;
+}
+
 /**
  * Reads palette tile payload from StrategyBuilder drag (application/x-cowrie-block).
  * @param {DataTransfer} dataTransfer
@@ -7,22 +17,42 @@ import { ENTRY_ACTIONS, EXIT_ACTIONS, RISK_ACTIONS } from "../types/strategyRule
  */
 /** @param {DataTransfer | null | undefined} dt */
 export function dataTransferHasCowriePalette(dt) {
-  if (!dt?.types) return false;
+  if (!dt?.types) return Boolean(lastPaletteDragType);
   const types = dt.types;
-  if (typeof types.includes === "function") return types.includes("application/x-cowrie-block");
-  if (typeof types.contains === "function") return types.contains("application/x-cowrie-block");
-  return Array.from(types).includes("application/x-cowrie-block");
+  // Some browsers expose an empty type list during dragover.
+  if (typeof types.length === "number" && types.length === 0) return true;
+  const hasCustom =
+    (typeof types.includes === "function" && types.includes("application/x-cowrie-block")) ||
+    (typeof types.contains === "function" && types.contains("application/x-cowrie-block")) ||
+    Array.from(types).includes("application/x-cowrie-block");
+  if (hasCustom) return true;
+  // Fallback for browsers that strip custom drag MIME types.
+  return (
+    (typeof types.includes === "function" && types.includes("text/plain")) ||
+    (typeof types.contains === "function" && types.contains("text/plain")) ||
+    Array.from(types).includes("text/plain")
+  );
 }
 
 export function parsePaletteDragType(dataTransfer) {
-  try {
-    const raw = dataTransfer.getData("application/x-cowrie-block");
+  const tryParse = (raw) => {
     if (!raw) return null;
-    const j = JSON.parse(raw);
-    if (j?.source !== "palette" || typeof j?.type !== "string") return null;
-    return j.type;
+    try {
+      const j = JSON.parse(raw);
+      if (j?.source !== "palette" || typeof j?.type !== "string") return null;
+      return j.type;
+    } catch {
+      return null;
+    }
+  };
+  try {
+    const primary = tryParse(dataTransfer.getData("application/x-cowrie-block"));
+    if (primary) return primary;
+    const plain = tryParse(dataTransfer.getData("text/plain"));
+    if (plain) return plain;
+    return lastPaletteDragType;
   } catch {
-    return null;
+    return lastPaletteDragType;
   }
 }
 
@@ -30,17 +60,18 @@ export function parsePaletteDragType(dataTransfer) {
 export function conditionPatchFromPaletteBlock(blockType) {
   /** @type {Record<string, Partial<{ ind: string; op: string; val: string }>>} */
   const map = {
-    sma: { ind: "SMA(20)" },
-    ema: { ind: "EMA(12)" },
-    rsi: { ind: "RSI(14)" },
-    bollinger: { ind: "Bollinger upper" },
+    sma: { ind: "SMA" },
+    ema: { ind: "EMA" },
+    rsi: { ind: "RSI" },
+    bollinger: { ind: "Bollinger Bands" },
     macd: { ind: "MACD" },
     volume: { ind: "Volume" },
-    if_gt: { op: "is above", val: "50" },
-    if_lt: { op: "is below", val: "50" },
+    if_gt: { op: "greater than", val: "50" },
+    if_lt: { op: "less than", val: "50" },
     if_cross_above: { op: "crosses above", val: "" },
     if_cross_below: { op: "crosses below", val: "" },
-    if_two_indicators_cross: { op: "crosses above", val: "" },
+    if_two_indicators_cross: { op: "two indicators cross", val: "" },
+    price_inside_band: { op: "price inside band", val: "" },
   };
   const p = map[blockType];
   return p ? { ...p } : null;
@@ -56,11 +87,12 @@ export function isPaletteActionBlock(blockType) {
 export function actionFromPaletteBlock(blockType, ruleType) {
   if (ruleType === "entry") {
     if (blockType === "buy") return ENTRY_ACTIONS[0];
-    if (blockType === "hold") return ENTRY_ACTIONS[0];
+    if (blockType === "hold") return ENTRY_ACTIONS[3];
     return null;
   }
   if (ruleType === "exit") {
     if (blockType === "sell") return EXIT_ACTIONS[0];
+    if (blockType === "hold") return EXIT_ACTIONS[3];
     return null;
   }
   if (ruleType === "risk") {

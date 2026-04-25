@@ -599,23 +599,26 @@ export function translateVisualBlocksToPython(blocks, ctx) {
   return translateVisualBlocksToPythonWithDiagnostics(blocks, ctx).code;
 }
 
-function indicatorExpr(ind) {
-  const map = {
-    "RSI(14)": "rsi_14",
-    "SMA(20)": "sma_20",
-    "SMA(50)": "sma_50",
-    "EMA(12)": "ema_12",
-    "EMA(26)": "ema_26",
-    MACD: "macd",
-    "Bollinger upper": "bb_upper",
-    "Bollinger lower": "bb_lower",
-    Price: "prices.iloc[-1]",
-    Volume: "volume",
-  };
-  if (map[ind]) return map[ind];
-  return String(ind || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "_");
+function normalizeRuleIndicator(ind) {
+  const raw = String(ind || "").trim();
+  if (!raw) return "RSI";
+  if (raw.startsWith("RSI")) return "RSI";
+  if (raw.startsWith("Stochastic")) return "Stochastic";
+  if (raw.startsWith("SMA")) return "SMA";
+  if (raw.startsWith("EMA")) return "EMA";
+  if (raw.startsWith("MACD")) return "MACD";
+  if (raw.startsWith("Bollinger")) return "Bollinger Bands";
+  if (raw.startsWith("Keltner")) return "Keltner Channel";
+  if (raw.startsWith("Price")) return "Price";
+  if (raw.startsWith("Volume")) return "Volume";
+  return raw;
+}
+
+function paramNum(cond, key, fallback, min = 1) {
+  const raw = cond?.indParams?.[key];
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.max(min, v);
 }
 
 export function translateRulesToPython(simpleRules, advancedRules, builderMode, { ticker, start, end }) {
@@ -626,19 +629,176 @@ export function translateRulesToPython(simpleRules, advancedRules, builderMode, 
   const exitRules = rules.filter((r) => r?.type === "exit");
   const riskRules = rules.filter((r) => r?.type === "risk");
 
+  const setupLines = [];
+  const cache = new Map();
+  let uid = 0;
+
+  function registerIndicator(cond) {
+    const ind = normalizeRuleIndicator(cond?.ind);
+    if (ind === "Price") return { cur: "prices", prev: "prices_prev" };
+    if (ind === "Volume") {
+      const p = Math.round(paramNum(cond, "volumePeriod", 1, 1));
+      if (p <= 1) return { cur: "volume", prev: "volume_prev" };
+      const key = `vol:${p}`;
+      if (!cache.has(key)) {
+        const name = `vol_${p}_${uid++}`;
+        setupLines.push(`    ${name} = v.rolling(${p}).mean()`);
+        cache.set(key, name);
+      }
+      const name = cache.get(key);
+      return { cur: `float(${name}.iloc[i])`, prev: `float(${name}.iloc[i - 1])` };
+    }
+    if (ind === "SMA") {
+      const p = Math.round(paramNum(cond, "smaPeriod", 20, 1));
+      const key = `sma:${p}`;
+      if (!cache.has(key)) {
+        const name = `sma_${p}_${uid++}`;
+        setupLines.push(`    ${name} = c.rolling(${p}).mean()`);
+        cache.set(key, name);
+      }
+      const name = cache.get(key);
+      return { cur: `float(${name}.iloc[i])`, prev: `float(${name}.iloc[i - 1])` };
+    }
+    if (ind === "EMA") {
+      const p = Math.round(paramNum(cond, "emaPeriod", 12, 1));
+      const key = `ema:${p}`;
+      if (!cache.has(key)) {
+        const name = `ema_${p}_${uid++}`;
+        setupLines.push(`    ${name} = c.ewm(span=${p}, adjust=False).mean()`);
+        cache.set(key, name);
+      }
+      const name = cache.get(key);
+      return { cur: `float(${name}.iloc[i])`, prev: `float(${name}.iloc[i - 1])` };
+    }
+    if (ind === "RSI") {
+      const p = Math.round(paramNum(cond, "rsiPeriod", 14, 2));
+      const key = `rsi:${p}`;
+      if (!cache.has(key)) {
+        const base = `rsi_${p}_${uid++}`;
+        setupLines.push(`    ${base}_d = c.diff()`);
+        setupLines.push(`    ${base}_g = ${base}_d.clip(lower=0.0)`);
+        setupLines.push(`    ${base}_l = (-${base}_d).clip(lower=0.0)`);
+        setupLines.push(`    ${base}_ag = ${base}_g.ewm(alpha=1.0 / ${p}.0, adjust=False).mean()`);
+        setupLines.push(`    ${base}_al = ${base}_l.ewm(alpha=1.0 / ${p}.0, adjust=False).mean().replace(0.0, np.nan)`);
+        setupLines.push(`    ${base} = (100.0 - (100.0 / (1.0 + (${base}_ag / ${base}_al)))).fillna(50.0)`);
+        cache.set(key, base);
+      }
+      const name = cache.get(key);
+      return { cur: `float(${name}.iloc[i])`, prev: `float(${name}.iloc[i - 1])` };
+    }
+    if (ind === "Stochastic") {
+      const p = Math.round(paramNum(cond, "rsiPeriod", 14, 2));
+      const key = `stoch:${p}`;
+      if (!cache.has(key)) {
+        const base = `stoch_${p}_${uid++}`;
+        setupLines.push(`    ${base}_low = df["Low"].astype(float).rolling(${p}).min() if "Low" in df.columns else c.rolling(${p}).min()`);
+        setupLines.push(`    ${base}_high = df["High"].astype(float).rolling(${p}).max() if "High" in df.columns else c.rolling(${p}).max()`);
+        setupLines.push(`    ${base} = (100.0 * (c - ${base}_low) / (${base}_high - ${base}_low).replace(0.0, np.nan)).fillna(50.0)`);
+        cache.set(key, base);
+      }
+      const name = cache.get(key);
+      return { cur: `float(${name}.iloc[i])`, prev: `float(${name}.iloc[i - 1])` };
+    }
+    if (ind === "MACD") {
+      const f = Math.round(paramNum(cond, "macdFast", 12, 1));
+      const s = Math.round(paramNum(cond, "macdSlow", 26, 1));
+      const g = Math.round(paramNum(cond, "macdSignal", 9, 1));
+      const key = `macd:${f}:${s}:${g}`;
+      if (!cache.has(key)) {
+        const base = `macd_${f}_${s}_${g}_${uid++}`;
+        setupLines.push(`    ${base}_f = c.ewm(span=${f}, adjust=False).mean()`);
+        setupLines.push(`    ${base}_s = c.ewm(span=${s}, adjust=False).mean()`);
+        setupLines.push(`    ${base} = ${base}_f - ${base}_s`);
+        setupLines.push(`    ${base}_sig = ${base}.ewm(span=${g}, adjust=False).mean()`);
+        cache.set(key, base);
+      }
+      const name = cache.get(key);
+      return { cur: `float(${name}.iloc[i])`, prev: `float(${name}.iloc[i - 1])` };
+    }
+    if (ind === "Bollinger Bands") {
+      const p = Math.round(paramNum(cond, "bbPeriod", 20, 2));
+      const std = paramNum(cond, "bbStd", 2, 0.1);
+      const key = `bb:${p}:${std}`;
+      if (!cache.has(key)) {
+        const base = `bb_${p}_${String(std).replace(".", "_")}_${uid++}`;
+        setupLines.push(`    ${base}_mid = c.rolling(${p}).mean()`);
+        setupLines.push(`    ${base}_std = c.rolling(${p}).std(ddof=0)`);
+        setupLines.push(`    ${base}_upper = ${base}_mid + ${std} * ${base}_std`);
+        setupLines.push(`    ${base}_lower = ${base}_mid - ${std} * ${base}_std`);
+        cache.set(key, base);
+      }
+      const base = cache.get(key);
+      const band = String(cond?.bandSelection || "upper").toLowerCase();
+      const side = band === "lower" ? "lower" : band === "middle" ? "mid" : "upper";
+      return { cur: `float(${base}_${side}.iloc[i])`, prev: `float(${base}_${side}.iloc[i - 1])` };
+    }
+    if (ind === "Keltner Channel") {
+      const p = Math.round(paramNum(cond, "kcPeriod", 20, 2));
+      const mult = paramNum(cond, "kcMultiplier", 1.5, 0.1);
+      const key = `kc:${p}:${mult}`;
+      if (!cache.has(key)) {
+        const base = `kc_${p}_${String(mult).replace(".", "_")}_${uid++}`;
+        setupLines.push(`    ${base}_ema = c.ewm(span=${p}, adjust=False).mean()`);
+        setupLines.push(`    ${base}_tr_hl = (df["High"].astype(float) - df["Low"].astype(float)) if ("High" in df.columns and "Low" in df.columns) else c.diff().abs()`);
+        setupLines.push(`    ${base}_atr = ${base}_tr_hl.rolling(${p}).mean()`);
+        setupLines.push(`    ${base}_upper = ${base}_ema + ${mult} * ${base}_atr`);
+        setupLines.push(`    ${base}_lower = ${base}_ema - ${mult} * ${base}_atr`);
+        setupLines.push(`    ${base}_mid = ${base}_ema`);
+        cache.set(key, base);
+      }
+      const base = cache.get(key);
+      const band = String(cond?.bandSelection || "upper").toLowerCase();
+      const side = band === "lower" ? "lower" : band === "middle" ? "mid" : "upper";
+      return { cur: `float(${base}_${side}.iloc[i])`, prev: `float(${base}_${side}.iloc[i - 1])` };
+    }
+    return { cur: "prices", prev: "prices_prev" };
+  }
+
   function condToPython(cond) {
-    const ind = indicatorExpr(cond?.ind);
-    switch (cond?.op) {
+    const ref = registerIndicator(cond);
+    const cur = ref.cur;
+    const prev = ref.prev;
+    const threshold = Number(cond?.val || 0);
+    const th = Number.isFinite(threshold) ? threshold : 0;
+    const op = String(cond?.op || "").toLowerCase();
+    if (op === "price inside band") {
+      const ind = normalizeRuleIndicator(cond?.ind);
+      if (ind === "Bollinger Bands") {
+        const p = Math.round(paramNum(cond, "bbPeriod", 20, 2));
+        const std = paramNum(cond, "bbStd", 2, 0.1);
+        const key = `bb:${p}:${std}`;
+        if (!cache.has(key)) registerIndicator({ ...cond, bandSelection: "upper" });
+        const base = cache.get(key);
+        return `_okv(${base}_lower.iloc[i]) and _okv(${base}_upper.iloc[i]) and prices >= float(${base}_lower.iloc[i]) and prices <= float(${base}_upper.iloc[i])`;
+      }
+      if (ind === "Keltner Channel") {
+        const p = Math.round(paramNum(cond, "kcPeriod", 20, 2));
+        const mult = paramNum(cond, "kcMultiplier", 1.5, 0.1);
+        const key = `kc:${p}:${mult}`;
+        if (!cache.has(key)) registerIndicator({ ...cond, bandSelection: "upper" });
+        const base = cache.get(key);
+        return `_okv(${base}_lower.iloc[i]) and _okv(${base}_upper.iloc[i]) and prices >= float(${base}_lower.iloc[i]) and prices <= float(${base}_upper.iloc[i])`;
+      }
+      return "False";
+    }
+    if (op === "two indicators cross") {
+      const a = registerIndicator(cond);
+      const b = registerIndicator({ ...cond, ind: cond?.secondIndicator || "SMA" });
+      return `_okv(${a.prev}) and _okv(${a.cur}) and _okv(${b.prev}) and _okv(${b.cur}) and ((float(${a.prev}) <= float(${b.prev}) and float(${a.cur}) > float(${b.cur})) or (float(${a.prev}) >= float(${b.prev}) and float(${a.cur}) < float(${b.cur})))`;
+    }
+    switch (op) {
       case "crosses above":
-        return `crossover(${ind}, ${ind}_prev)`;
+        return `_okv(${prev}) and _okv(${cur}) and float(${cur}) > float(${prev})`;
       case "crosses below":
-        return `crossunder(${ind}, ${ind}_prev)`;
+        return `_okv(${prev}) and _okv(${cur}) and float(${cur}) < float(${prev})`;
       case "is above":
-        return `${ind} > ${cond?.val || 0}`;
+      case "greater than":
+        return `_okv(${cur}) and float(${cur}) > ${th}`;
       case "is below":
-        return `${ind} < ${cond?.val || 0}`;
+      case "less than":
+        return `_okv(${cur}) and float(${cur}) < ${th}`;
       default:
-        return `${ind} > 0`;
+        return `_okv(${cur}) and float(${cur}) > 0`;
     }
   }
 
@@ -672,31 +832,105 @@ export function translateRulesToPython(simpleRules, advancedRules, builderMode, 
   const exitCondition = exitRules.map((r) => `(${ruleToPython(r)})`).join(" or ");
 
   const entryAction = entryRules[0]?.action || "Buy — all cash";
-  const sizeExpr = entryAction.includes("50%")
-    ? "0.5 * data.portfolio.cash"
-    : entryAction.includes("fixed")
-      ? "1000"
-      : "data.portfolio.cash";
+  const entryActionValRaw = Number(entryRules[0]?.actionVal);
+  const entryPct = Number.isFinite(entryActionValRaw) ? entryActionValRaw : 50;
+  const entryFixed = Number.isFinite(entryActionValRaw) ? entryActionValRaw : 1000;
+  const sizeMode = entryAction.includes("Hold")
+    ? "hold"
+    : entryAction.includes("%")
+      ? "pct"
+      : entryAction.includes("fixed")
+        ? "fixed"
+        : "all";
+  const exitAction = exitRules[0]?.action || "Sell — entire position";
+  const exitActionValRaw = Number(exitRules[0]?.actionVal);
+  const exitPct = Number.isFinite(exitActionValRaw) ? exitActionValRaw : 50;
+  const exitFixed = Number.isFinite(exitActionValRaw) ? exitActionValRaw : 1000;
+  const sellMode = exitAction.includes("Hold")
+    ? "hold"
+    : exitAction.includes("%")
+      ? "pct"
+      : exitAction.includes("fixed")
+        ? "fixed"
+        : "all";
 
   const stopLoss = riskRules.find((r) => String(r?.action || "").includes("Stop loss"));
   const takeProfit = riskRules.find((r) => String(r?.action || "").includes("Take profit"));
 
   return `
 def run(data):
-    import pandas as pd
-    prices = data.history['${ticker}']['close']
+    # Rule builder compiler (${ticker}, ${start} -> ${end} from form)
+    df = data["price"].copy()
+    c = df["Close"].astype(float)
+    v = df["Volume"].astype(float) if "Volume" in df.columns else c * 0.0
+    def _okv(x):
+        try:
+            xf = float(x)
+            return xf == xf
+        except Exception:
+            return False
+${setupLines.length ? `\n${setupLines.join("\n")}` : ""}
 
-    # Entry
-    entry_signal = ${entryCondition || "False"}
+    cash = 1.0
+    shares = 0.0
+    entry_px = None
+    equity = []
+    trades = []
 
-    # Exit
-    exit_signal = ${exitCondition || "False"}
+    for i in range(len(c)):
+        pr = float(c.iloc[i])
+        equity.append(cash + shares * pr)
 
-    if exit_signal and data.portfolio.position > 0:
-        data.sell(quantity=data.portfolio.position)
-    elif entry_signal and data.portfolio.cash > 0:
-        data.buy(amount=${sizeExpr})
-    ${stopLoss ? `\n    # Stop loss at ${stopLoss.actionVal}%` : ""}
-    ${takeProfit ? `\n    # Take profit at ${takeProfit.actionVal}%` : ""}
+        if i == 0:
+            continue
+
+        prices = pr
+        prices_prev = float(c.iloc[i - 1])
+        volume = float(v.iloc[i])
+        volume_prev = float(v.iloc[i - 1])
+
+        entry_signal = bool(${entryCondition || "False"})
+        exit_signal = bool(${exitCondition || "False"})
+
+        if exit_signal and shares > 0 and "${sellMode}" != "hold":
+            if "${sellMode}" == "pct":
+                _qty = shares * (${exitPct} / 100.0)
+            elif "${sellMode}" == "fixed":
+                _qty = min(shares, ${exitFixed} / pr if pr > 0 else shares)
+            else:
+                _qty = shares
+            _qty = max(0.0, min(shares, _qty))
+            if _qty > 0:
+                cash += _qty * pr
+                shares -= _qty
+                if shares <= 1e-12:
+                    shares = 0.0
+                    entry_px = None
+                trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})
+        elif entry_signal and cash > 0:
+            if "${sizeMode}" == "hold":
+                spend = 0.0
+            elif "${sizeMode}" == "pct":
+                spend = cash * (${entryPct} / 100.0)
+            elif "${sizeMode}" == "fixed":
+                spend = min(${entryFixed}, cash)
+            else:
+                spend = cash
+            if spend > 0:
+                shares += spend / pr
+                cash -= spend
+                entry_px = pr if entry_px is None else entry_px
+                trades.append({"date": str(df.index[i])[:10], "side": "buy", "price": pr})
+${stopLoss ? `        if shares > 0 and entry_px is not None and pr <= entry_px * (1.0 - ${Number(stopLoss.actionVal || 0) / 100}):\n            cash += shares * pr\n            shares = 0.0\n            entry_px = None\n            trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})` : ""}
+${takeProfit ? `        if shares > 0 and entry_px is not None and pr >= entry_px * (1.0 + ${Number(takeProfit.actionVal || 0) / 100}):\n            cash += shares * pr\n            shares = 0.0\n            entry_px = None\n            trades.append({"date": str(df.index[i])[:10], "side": "sell", "price": pr})` : ""}
+
+    dates = [str(x)[:10] for x in df.index]
+    e0 = equity[0] if abs(equity[0]) > 1e-12 else 1.0
+    return {
+        "dates": dates,
+        "equity": [float(x / e0) for x in equity],
+        "trades": trades,
+        "close_prices": c.tolist(),
+    }
 `.trim();
 }

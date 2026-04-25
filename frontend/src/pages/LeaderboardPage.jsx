@@ -154,6 +154,27 @@ export default function LeaderboardPage() {
   const [detail, setDetail] = useState(null);
   const [toast, setToast] = useState("");
 
+  const loadStrategyLabBundle = useCallback(() => {
+    let done = false;
+    setBundleLoading(true);
+    setBundleError("");
+    const today = new Date().toISOString().slice(0, 10);
+    api
+      .leaderboard("2000-01-01", today)
+      .then((b) => {
+        if (!done) setBundle(b);
+      })
+      .catch((e) => {
+        if (!done) setBundleError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!done) setBundleLoading(false);
+      });
+    return () => {
+      done = true;
+    };
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_TAB, mainTab);
@@ -186,25 +207,12 @@ export default function LeaderboardPage() {
     }
   }, [strategyLabCat]);
 
+  useEffect(() => loadStrategyLabBundle(), [loadStrategyLabBundle]);
+
   useEffect(() => {
-    let done = false;
-    setBundleLoading(true);
-    const today = new Date().toISOString().slice(0, 10);
-    api
-      .leaderboard("2000-01-01", today)
-      .then((b) => {
-        if (!done) setBundle(b);
-      })
-      .catch((e) => {
-        if (!done) setBundleError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!done) setBundleLoading(false);
-      });
-    return () => {
-      done = true;
-    };
-  }, []);
+    if (mainTab !== "strategy-lab") return undefined;
+    return loadStrategyLabBundle();
+  }, [mainTab, loadStrategyLabBundle]);
 
   useEffect(() => {
     if (mainTab !== "community" || communitySubTab !== "monthly") return undefined;
@@ -319,7 +327,7 @@ export default function LeaderboardPage() {
       return "Make 10 trades to appear on the all-time leaderboard.";
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+      return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
     }
     if (y.banner_kind === "no_overlap") {
       return "No qualifying paper snapshot for this time window.";
@@ -337,12 +345,12 @@ export default function LeaderboardPage() {
       return `Make ${y.min_trades} trades this month to appear on the leaderboard. You have ${y.trades_this_month} so far.`;
     }
     if (y.banner_kind === "opt_out") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+      return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
     }
     if (y.banner_kind === "no_paper" || y.banner_kind === "no_baseline") {
-      return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+      return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
     }
-    return "Enable “Share this strategy anonymously on the leaderboard” on Account or Backtesting to appear here.";
+    return "Set your paper account to Public on Account (or use the Backtesting quick toggle) to appear here.";
   }, [monthly]);
 
   const copyToStrategy = useCallback(() => {
@@ -360,8 +368,8 @@ export default function LeaderboardPage() {
     } catch {
       /* ignore */
     }
-    setToast("Strategy copied to your Strategy page");
-    navigate("/strategy");
+    setToast("Strategy copied to your Backtesting editor");
+    navigate("/backtesting?tab=backtest");
   }, [detail, navigate]);
 
   const windowPills = [
@@ -588,7 +596,8 @@ export default function LeaderboardPage() {
                   </div>
                 </section>
                 <p className="lb-opt-out-note">
-                  Your performance is visible to the community. Turn off “Share this strategy anonymously on the leaderboard” on Account or Backtesting to opt out.
+                  Your performance is visible to the community. Set your paper account to Private on Account (or use the
+                  Backtesting quick toggle) to opt out.
                 </p>
               </>
             ) : null
@@ -724,7 +733,7 @@ export default function LeaderboardPage() {
               basicSetup={{ lineNumbers: true }}
             />
             <button type="button" className="lb-copy-btn" onClick={copyToStrategy}>
-              Copy to my Strategy page
+              Copy to my Backtesting editor
             </button>
           </>
         ) : selected ? (

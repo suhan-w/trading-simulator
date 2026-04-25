@@ -21,22 +21,35 @@ export function setToken(t) {
 }
 
 async function request(path, options = {}) {
-  const headers = { ...options.headers };
+  const { timeoutMs, ...rest } = options;
+  const headers = { ...rest.headers };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (options.body && typeof options.body === "object" && !(options.body instanceof FormData)) {
+  if (rest.body && typeof rest.body === "object" && !(rest.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
-    options.body = JSON.stringify(options.body);
+    rest.body = JSON.stringify(rest.body);
   }
+  const controller = new AbortController();
+  const tid =
+    timeoutMs != null
+      ? setTimeout(() => {
+          controller.abort();
+        }, timeoutMs)
+      : null;
   let res;
   try {
-    res = await fetch(`${base}${path}`, { ...options, headers });
+    res = await fetch(`${base}${path}`, { ...rest, headers, signal: controller.signal });
   } catch (e) {
+    if (e?.name === "AbortError") {
+      throw new Error("Request timed out. Try a shorter date range or check your network.");
+    }
     const msg =
       e instanceof TypeError
         ? "Cannot reach the API. Start the backend on port 8000, or set VITE_API_URL."
         : String(e);
     throw new Error(msg);
+  } finally {
+    if (tid) clearTimeout(tid);
   }
   if (res.status === 401 && getToken()) {
     setToken(null);
@@ -121,7 +134,8 @@ export const api = {
     return res.blob();
   },
 
-  runCodeBacktest: (body) => request("/api/backtest/run-code", { method: "POST", body }),
+  runCodeBacktest: (body) =>
+    request("/api/backtest/run-code", { method: "POST", body, timeoutMs: 120_000 }),
 
   leaderboard: (start, end) =>
     request(

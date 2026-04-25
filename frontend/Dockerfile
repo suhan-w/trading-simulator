@@ -12,7 +12,9 @@ ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
 # Optional: pass CACHEBUST=$(date +%s) from docker compose so this layer reruns if COPY was stale.
+# Also exposed to Vite so each image gets a unique client-visible bundle id (avoids "nothing changed" confusion).
 ARG CACHEBUST
+ENV VITE_COWRIE_BUNDLE_STAMP=$CACHEBUST
 RUN echo "cowrie CACHEBUST=${CACHEBUST:-none}" > /dev/null
 
 RUN npm run build
