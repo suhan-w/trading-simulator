@@ -10,6 +10,7 @@ import PlainEnglishBar, { toPlainEnglishAdvanced, toPlainEnglishSimple } from ".
 import { cowrieEditorTheme } from "../constants/cowrieCodeMirrorTheme";
 import { STRATEGY_LOAD_PAYLOAD_KEY } from "../constants/strategyLoadPayload";
 import { loadVisualStrategies, saveVisualStrategies, VISUAL_SAVED_STRATEGIES_MAX } from "../constants/visualStrategyStorage";
+import { randomId } from "../utils/randomId";
 
 const DEFAULT_TICKER = "CBA.AX";
 const DEFAULT_START = new Date(new Date().setFullYear(new Date().getFullYear() - 2)).toISOString().slice(0, 10);
@@ -82,8 +83,7 @@ export default function StrategyPage() {
       while (existing.has(`${trimmed} (${n})`.toLowerCase())) n += 1;
       trimmed = `${trimmed} (${n})`;
     }
-    const id =
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `vs-${Date.now()}`;
+    const id = randomId();
     const next = [
       ...savedStrategies,
       { id, title: trimmed, blocks: [], savedAt: new Date().toISOString(), builderMode: mode, rules },

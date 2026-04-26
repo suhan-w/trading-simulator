@@ -1,8 +1,9 @@
 import { makeCondition } from "../types/strategyRules";
+import { randomId } from "../utils/randomId";
 
 function makeRule(type, conds, action, actionVal = "5") {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     type,
     conds,
     action,

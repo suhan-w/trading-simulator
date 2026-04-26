@@ -21,6 +21,7 @@ import { pushBacktestRunHistory } from "../constants/backtestRunHistoryStorage";
 import { loadVisualStrategies, saveVisualStrategies } from "../constants/visualStrategyStorage";
 import { loadStrategyBasket, saveStrategyBasket } from "../constants/strategyBasketStorage";
 import { translateRulesToPython, translateVisualBlocksToPython } from "../utils/strategyBuilderTranslate";
+import { randomId } from "../utils/randomId";
 import { makeTemplateSimpleRules, templateTitle } from "../constants/strategyTemplates";
 
 function defaultRange() {
@@ -204,7 +205,7 @@ export default function BacktestingPage() {
         title = `${requestedTitle} (${suffix})`;
         suffix += 1;
       }
-      const newItem = { id: crypto.randomUUID(), title, code: normalizedCode, savedAt: new Date().toISOString() };
+      const newItem = { id: randomId(), title, code: normalizedCode, savedAt: new Date().toISOString() };
       const next = [newItem, ...prev].slice(0, 30);
       setSelectedSavedCode({ id: newItem.id, title: newItem.title });
       setSelectedSavedVisual(null);
