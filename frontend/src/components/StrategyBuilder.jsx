@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import Editor from "@monaco-editor/react";
 import { compileUnifiedRulesToRunPython } from "../utils/strategyRunCompiler";
 import { parsePythonToStrategy } from "../utils/strategyParser";
+import { randomId } from "../utils/randomId";
 
 const TOKENS = {
   pageBg: "#f5f4f0",
@@ -415,12 +416,12 @@ const mkIndicator = (kind) => {
     kind === "Bollinger Bands" ? { period: 20, stddev: 2 } :
     kind === "Keltner Channel" ? { period: 20, atrMultiplier: 2 } :
     kind === "Volume" ? { period: 20 } : {};
-  return { id: crypto.randomUUID(), kind, type: m?.type || "line", params, band: null };
+  return { id: randomId(), kind, type: m?.type || "line", params, band: null };
 };
-const mkRow = () => ({ id: crypto.randomUUID(), indicator: null, condition: null, value: null, secondIndicator: null, bandZone: "full" });
+const mkRow = () => ({ id: randomId(), indicator: null, condition: null, value: null, secondIndicator: null, bandZone: "full" });
 const mkRule = (kind) => kind === "risk"
-  ? { id: crypto.randomUUID(), kind, title: "Risk rule", stopLoss: 2, takeProfit: null }
-  : { id: crypto.randomUUID(), kind, title: `${kind === "entry" ? "Entry" : "Exit"} rule`, conditions: [mkRow()], combinators: [], action: null };
+  ? { id: randomId(), kind, title: "Risk rule", stopLoss: 2, takeProfit: null }
+  : { id: randomId(), kind, title: `${kind === "entry" ? "Entry" : "Exit"} rule`, conditions: [mkRow()], combinators: [], action: null };
 
 /** Survives dragend vs drop ordering bugs; cleared after applyDrop reads it */
 const SIDEBAR_DRAG_STORAGE_KEY = "cowrie-strategy-builder-drag-payload-v1";
@@ -579,19 +580,19 @@ function StrategyBuilder({ code, setCode, autoSyncCodeFromVisual = false, onSave
       entry.action = { kind: "buy_percent_portfolio", params: { value: 40 } };
       exit.conditions = [{ ...mkRow(), indicator: mkIndicator("EMA"), condition: "crosses_below", value: 20, secondIndicator: null }];
       exit.action = { kind: "sell_entire_position", params: {} };
-      risk = { id: crypto.randomUUID(), kind: "risk", title: "Risk rule", stopLoss: 3, takeProfit: null };
+      risk = { id: randomId(), kind: "risk", title: "Risk rule", stopLoss: 3, takeProfit: null };
     } else if (kind === "mean") {
       entry.conditions = [{ ...mkRow(), indicator: mkIndicator("RSI"), condition: "crosses_above", value: 30, secondIndicator: null }];
       entry.action = { kind: "buy_percent_portfolio", params: { value: 30 } };
       exit.conditions = [{ ...mkRow(), indicator: mkIndicator("RSI"), condition: "greater_than", value: 70, secondIndicator: null }];
       exit.action = { kind: "sell_percent_position", params: { value: 50 } };
-      risk = { id: crypto.randomUUID(), kind: "risk", title: "Risk rule", stopLoss: null, takeProfit: 6 };
+      risk = { id: randomId(), kind: "risk", title: "Risk rule", stopLoss: null, takeProfit: 6 };
     } else {
       entry.conditions = [{ ...mkRow(), indicator: mkIndicator("Bollinger Bands"), condition: "crosses_above", value: 0, secondIndicator: null }];
       entry.action = { kind: "buy_all_cash", params: {} };
       exit.conditions = [{ ...mkRow(), indicator: mkIndicator("Bollinger Bands"), condition: "inside_band", value: null, secondIndicator: null }];
       exit.action = { kind: "sell_entire_position", params: {} };
-      risk = { id: crypto.randomUUID(), kind: "risk", title: "Risk rule", stopLoss: 4, takeProfit: null };
+      risk = { id: randomId(), kind: "risk", title: "Risk rule", stopLoss: 4, takeProfit: null };
     }
     setRules([entry, exit, risk]);
     setCodeUtilityTab("checklist");

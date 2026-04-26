@@ -1,3 +1,5 @@
+import { randomId } from "../utils/randomId";
+
 const KEY = "corrie_backtest_run_history_v1";
 const MAX = 80;
 
@@ -57,10 +59,7 @@ function persist(items) {
  * }} run
  */
 export function pushBacktestRunHistory(run) {
-  const id =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `bt-${Date.now()}`;
+  const id = randomId();
   const rec = {
     id,
     ranAt: new Date().toISOString(),

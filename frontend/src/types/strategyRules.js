@@ -1,3 +1,5 @@
+import { randomId } from "../utils/randomId";
+
 // Rule shapes for Simple and Advanced modes
 //
 // Simple mode rule:
@@ -41,7 +43,7 @@ export function makeCondition(overrides = {}) {
     ...(overrides.indParams || {}),
   };
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ind,
     op: OPERATORS[0],
     val: "",
@@ -54,12 +56,12 @@ export function makeCondition(overrides = {}) {
 }
 
 export function makeStep(overrides = {}) {
-  return { id: crypto.randomUUID(), conds: [makeCondition()], ...overrides };
+  return { id: randomId(), conds: [makeCondition()], ...overrides };
 }
 
 export function makeSimpleRule(type) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     type,
     conds: [makeCondition()],
     action: defaultAction(type),
@@ -69,7 +71,7 @@ export function makeSimpleRule(type) {
 
 export function makeAdvancedRule(type) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     type,
     steps: [makeStep()],
     action: defaultAction(type),
