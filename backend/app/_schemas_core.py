@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from sqlalchemy.orm import Session
 
@@ -15,13 +15,26 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class RegisterOut(BaseModel):
+    """Registration response: token only issued after email verification."""
+
+    access_token: str | None = None
+    token_type: str = "bearer"
+    email_verified: bool
+    message: str | None = None
+    # Plain code only when ENVIRONMENT is non-production and email was not successfully sent (never set in production).
+    dev_verification_code: str | None = None
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     email: str
+    role: str = "user"
     cash_balance: float
     created_at: datetime
+    email_verified: bool = True
     is_guest: bool = False
     has_alpha_vantage_key: bool = False
     alpha_vantage_requests_used_today: int = 0
@@ -42,11 +55,16 @@ def user_to_out(user: User, db: Session | None = None) -> UserOut:
     created_at = user.created_at
     if created_at is None:
         created_at = datetime.utcfromtimestamp(0)
+    ev = getattr(user, "email_verified", None)
+    email_verified = True if ev is None else bool(ev)
+
     return UserOut(
         id=user.id,
         email=user.email,
+        role=(getattr(user, "role", None) or "user").strip() or "user",
         cash_balance=user.cash_balance,
         created_at=created_at,
+        email_verified=email_verified,
         is_guest=user.email.endswith("@guest.local"),
         has_alpha_vantage_key=bool((user.alpha_vantage_api_key or "").strip()),
         alpha_vantage_requests_used_today=used,
@@ -64,6 +82,23 @@ class RegisterIn(BaseModel):
 class LoginIn(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1, max_length=72)
+
+
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=1, max_length=32)
+
+    @field_validator("code")
+    @classmethod
+    def normalize_six_digit_code(cls, v: str) -> str:
+        digits = "".join(c for c in v if c.isdigit())
+        if len(digits) != 6:
+            raise ValueError("Enter the 6-digit code from your email.")
+        return digits
+
+
+class ResendVerificationIn(BaseModel):
+    email: EmailStr
 
 
 class AlphaVantageApiKeyIn(BaseModel):

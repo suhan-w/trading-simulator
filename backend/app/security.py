@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -27,12 +27,19 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+def access_token_claims_for_user(user: Any) -> dict[str, Any]:
+    """JWT body: subject + admin flag + token_version for invalidation."""
+    role = (getattr(user, "role", None) or "user").strip()
+    admin = role in ("moderator", "super_admin")
+    tv = int(getattr(user, "token_version", 0) or 0)
+    return {"sub": str(user.id), "admin": admin, "tv": tv}
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
-    )
-    to_encode.update({"exp": expire})
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
+    to_encode.update({"exp": expire, "iat": now})
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 

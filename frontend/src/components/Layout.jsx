@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import BrandMark from "./BrandMark";
 import MelbourneMarketStatus from "./MelbourneMarketStatus";
+import { isAdminRole } from "../admin/isAdmin";
 function navPill({ isActive }) {
   return [
     "whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold transition-colors",
@@ -86,6 +87,11 @@ export default function Layout() {
               <NavLink to="/account" className={navPill}>
                 Account
               </NavLink>
+              {isAdminRole(user?.role) ? (
+                <NavLink to="/admin" className={navPill}>
+                  Admin
+                </NavLink>
+              ) : null}
             </nav>
             {user && (
               <button type="button" onClick={() => void logout()} className="cs-btn-neutral shrink-0">
@@ -172,6 +178,16 @@ export default function Layout() {
             <Link to="/account" className="hover:text-ink">
               Account
             </Link>
+            {isAdminRole(user?.role) ? (
+              <>
+                <span className="text-ink/[0.15]" aria-hidden>
+                  ·
+                </span>
+                <Link to="/admin" className="hover:text-ink font-semibold text-gold">
+                  Admin
+                </Link>
+              </>
+            ) : null}
           </nav>
         )}
         <p className="text-center text-xs leading-relaxed text-muted max-w-3xl mx-auto">

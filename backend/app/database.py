@@ -64,6 +64,50 @@ def ensure_schema_upgrades() -> None:
             ustmts.append("ALTER TABLE users ADD COLUMN anon_user_id VARCHAR(24)")
         if "anon_strategy_seq" not in ucols:
             ustmts.append("ALTER TABLE users ADD COLUMN anon_strategy_seq INTEGER DEFAULT 0")
+        if "email_verified" not in ucols:
+            if dialect == "postgresql":
+                ustmts.append("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT true")
+            else:
+                ustmts.append("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 1")
+        if "email_verification_token" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN email_verification_token VARCHAR(96)")
+        if "email_verification_expires_at" not in ucols:
+            if dialect == "postgresql":
+                ustmts.append("ALTER TABLE users ADD COLUMN email_verification_expires_at TIMESTAMP")
+            else:
+                ustmts.append("ALTER TABLE users ADD COLUMN email_verification_expires_at DATETIME")
+        if "role" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'")
+        if "is_suspended" not in ucols:
+            if dialect == "postgresql":
+                ustmts.append(
+                    "ALTER TABLE users ADD COLUMN is_suspended BOOLEAN NOT NULL DEFAULT false"
+                )
+            else:
+                ustmts.append("ALTER TABLE users ADD COLUMN is_suspended BOOLEAN NOT NULL DEFAULT 0")
+        if "suspended_at" not in ucols:
+            if dialect == "postgresql":
+                ustmts.append("ALTER TABLE users ADD COLUMN suspended_at TIMESTAMP")
+            else:
+                ustmts.append("ALTER TABLE users ADD COLUMN suspended_at DATETIME")
+        if "suspension_reason" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN suspension_reason TEXT")
+        if "last_active_at" not in ucols:
+            if dialect == "postgresql":
+                ustmts.append("ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP")
+            else:
+                ustmts.append("ALTER TABLE users ADD COLUMN last_active_at DATETIME")
+        if "notes" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN notes TEXT")
+        if "username" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN username VARCHAR(255)")
+        if "is_deleted" not in ucols:
+            if dialect == "postgresql":
+                ustmts.append("ALTER TABLE users ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT false")
+            else:
+                ustmts.append("ALTER TABLE users ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0")
+        if "token_version" not in ucols:
+            ustmts.append("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
         if ustmts:
             with engine.begin() as conn:
                 for sql in ustmts:
