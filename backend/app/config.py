@@ -14,14 +14,20 @@ class Settings(BaseSettings):
         description="Use production/deployment in live environments (requires RESEND_API_KEY for registration).",
     )
     # Email verification (Resend). Required in deployment so verification codes can be emailed.
-    resend_api_key: str | None = Field(default=None, description="Resend API key — never commit")
+    resend_api_key: str = Field(
+        default="re_VXaC3GBk_GpahP6g3iWdnMPZebJBkQrEU",
+        validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"),
+        description="Resend API key for sending verification emails (required in production)",
+    )
     public_app_url: str = Field(
-        default="http://localhost:5173",
+        default="http://cowrieshell.com.au",
+        validation_alias=AliasChoices("PUBLIC_APP_URL", "public_app_url"),
         description="Public frontend URL (no trailing slash) — used in verification links",
     )
     resend_from_email: str = Field(
-        default="onboarding@resend.dev",
-        description="Must be from a domain verified in Resend (free tier often restricts who can receive mail)",
+        default="noreply@cowrieshell.com.au",
+        validation_alias=AliasChoices("RESEND_FROM_EMAIL", "resend_from_email"),
+        description="Must be from a domain verified in Resend (domain verification required)",
     )
     # Comma-separated extra CORS origins (e.g. https://yourdomain.com). Env: CORS_EXTRA_ORIGINS
     cors_extra_origins: str = ""
