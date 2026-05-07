@@ -76,6 +76,13 @@ export default function AdminConfigPage() {
           Server-side feature flags and tunables. Values are JSON.
           {superUser ? " Edits are recorded in the audit log." : " Only super admins can edit."}
         </p>
+        <div className="mt-3 rounded-lg border border-ink/10 bg-card p-3 text-xs text-muted space-y-1">
+          <p className="font-semibold text-ink">How to use this page</p>
+          <p>Use this page to review and maintain system-wide settings that affect all users.</p>
+          <p>Only super admins can edit values. Changes apply immediately after saving.</p>
+          <p>Values must be valid JSON (for example: <code>"text"</code>, <code>123</code>, <code>true</code>, <code>{'{"key": 1}'}</code>).</p>
+          <p>Update one key at a time and verify the related admin or user flow after each change.</p>
+        </div>
       </div>
 
       {error ? <div className="rounded-lg border border-red-100 bg-red-50 text-red-800 text-sm px-4 py-3">{error}</div> : null}

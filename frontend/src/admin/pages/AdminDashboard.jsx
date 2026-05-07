@@ -126,10 +126,10 @@ export default function AdminDashboard() {
           <h2 className="text-xs font-semibold text-ink">Manage</h2>
           <p className="text-[11px] text-muted -mt-2">Jump to moderation tools.</p>
           <div className="flex flex-wrap gap-3">
-            <Link to="/admin/users" className="cs-btn-side text-xs">
+            <Link to="/admin/users" className="cs-btn-side inline-flex items-center justify-center text-center text-xs">
               Manage users
             </Link>
-            <Link to="/admin/audit" className="cs-btn-side text-xs">
+            <Link to="/admin/audit" className="cs-btn-side inline-flex items-center justify-center text-center text-xs">
               View audit log
             </Link>
           </div>
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              className="cs-btn-side text-xs"
+              className="cs-btn-side inline-flex items-center justify-center text-center text-xs"
               onClick={() => void onExportUsers()}
               disabled={exportBusy}
             >
