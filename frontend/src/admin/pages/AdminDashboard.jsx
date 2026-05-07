@@ -4,12 +4,19 @@ import { api, downloadAdminExport } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { isSuperAdmin } from "../isAdmin";
 
-function Metric({ label, value }) {
+function Metric({ label, value, hint }) {
   return (
-    <div className="cs-card p-4">
+    <div className="cs-card p-4" title={hint || undefined}>
       <p className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</p>
       <p className="text-xl font-semibold text-ink mt-1 tabular-nums">{value}</p>
+      {hint ? <p className="text-[10px] text-muted mt-1 leading-snug">{hint}</p> : null}
     </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  return (
+    <h2 className="text-[11px] font-semibold uppercase tracking-wide text-muted">{children}</h2>
   );
 }
 
@@ -77,35 +84,82 @@ export default function AdminDashboard() {
       ) : null}
 
       {stats ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          <Metric label="Total users" value={stats.total_users} />
-          <Metric label="Active today" value={stats.active_today} />
-          <Metric label="Active (7d)" value={stats.active_this_week} />
-          <Metric label="Suspended" value={stats.suspended_users} />
-          <Metric label="Total trades" value={stats.total_trades} />
-          <Metric label="Trades today" value={stats.trades_today} />
-          <Metric label="Avg P/L / user" value={Number(stats.avg_pnl).toFixed(2)} />
-          <Metric label="Portfolio value (sum)" value={Number(stats.total_portfolio_value).toLocaleString()} />
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <SectionLabel>People</SectionLabel>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Metric label="Total users" value={stats.total_users} hint="All registered accounts" />
+              <Metric label="Active today" value={stats.active_today} hint="Signed in or traded in the last 24h" />
+              <Metric label="Active this week" value={stats.active_this_week} hint="Activity in the last 7 days" />
+              <Metric label="Suspended" value={stats.suspended_users} hint="Accounts blocked from trading" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <SectionLabel>Trading activity</SectionLabel>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Metric label="Total trades" value={stats.total_trades} hint="All-time executed trades" />
+              <Metric label="Trades today" value={stats.trades_today} hint="Executed in the last 24h" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <SectionLabel>Money</SectionLabel>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Metric
+                label="Avg P/L per user"
+                value={Number(stats.avg_pnl).toFixed(2)}
+                hint="Mean profit/loss across all users"
+              />
+              <Metric
+                label="Total portfolio value"
+                value={Number(stats.total_portfolio_value).toLocaleString()}
+                hint="Sum of cash + holdings across all users"
+              />
+            </div>
+          </div>
         </div>
       ) : null}
 
-      <div className="cs-card p-5 space-y-4">
-        <h2 className="text-xs font-semibold text-ink">Quick actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <Link to="/admin/users" className="cs-btn-side text-xs">
-            Manage users
-          </Link>
-          <Link to="/admin/audit" className="cs-btn-side text-xs">
-            View audit log
-          </Link>
-          <button type="button" className="cs-btn-side text-xs" onClick={() => void onExportUsers()} disabled={exportBusy}>
-            {exportBusy === "csv" ? "Exporting…" : "Export users (CSV)"}
-          </button>
-          {superUser ? (
-            <button type="button" className="cs-btn-gold text-xs" onClick={() => void onExportPdf()} disabled={exportBusy}>
-              {exportBusy === "pdf" ? "Generating…" : "Export trades (PDF)"}
+      <div className="space-y-4">
+        <div className="cs-card p-5 space-y-3">
+          <h2 className="text-xs font-semibold text-ink">Manage</h2>
+          <p className="text-[11px] text-muted -mt-2">Jump to moderation tools.</p>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/admin/users" className="cs-btn-side text-xs">
+              Manage users
+            </Link>
+            <Link to="/admin/audit" className="cs-btn-side text-xs">
+              View audit log
+            </Link>
+          </div>
+        </div>
+
+        <div className="cs-card p-5 space-y-3">
+          <h2 className="text-xs font-semibold text-ink">Reports</h2>
+          <p className="text-[11px] text-muted -mt-2">
+            Download platform data. Exports are logged in the audit log.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              className="cs-btn-side text-xs"
+              onClick={() => void onExportUsers()}
+              disabled={exportBusy}
+            >
+              {exportBusy === "csv" ? "Exporting…" : "Export users (CSV)"}
             </button>
-          ) : null}
+            {superUser ? (
+              <button
+                type="button"
+                className="cs-btn-gold text-xs"
+                onClick={() => void onExportPdf()}
+                disabled={exportBusy}
+              >
+                {exportBusy === "pdf" ? "Generating…" : "Export trades (PDF)"}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

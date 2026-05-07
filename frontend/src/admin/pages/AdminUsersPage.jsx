@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 
 function formatWhen(iso) {
-  if (iso == null || iso === "") return "—";
+  if (iso == null || iso === "") return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 }
 
 export default function AdminUsersPage() {
@@ -121,32 +121,55 @@ export default function AdminUsersPage() {
                   <th className="p-3 font-semibold">Username</th>
                   <th className="p-3 font-semibold">Verified</th>
                   <th className="p-3 font-semibold">Last active</th>
-                  <th className="p-3 font-semibold">AV today</th>
+                  <th
+                    className="p-3 font-semibold"
+                    title="Alpha Vantage market-data API: requests used today / daily quota"
+                  >
+                    Quota (used/limit)
+                  </th>
                   <th className="p-3 font-semibold">Role</th>
                   <th className="p-3 font-semibold">Suspended</th>
                   <th className="p-3 font-semibold" />
                 </tr>
               </thead>
               <tbody>
-                {data.users?.map((u) => (
-                  <tr key={u.id} className="border-b border-ink/[0.06] hover:bg-ink/[0.02]">
-                    <td className="p-3 tabular-nums">{u.id}</td>
-                    <td className="p-3 font-medium">{u.email}</td>
-                    <td className="p-3 text-muted">{u.username ?? "—"}</td>
-                    <td className="p-3">{u.email_verified === false ? "No" : "Yes"}</td>
-                    <td className="p-3 text-muted whitespace-nowrap">{formatWhen(u.last_active_at)}</td>
-                    <td className="p-3 tabular-nums">
-                      {u.alpha_vantage_requests_used_today ?? 0}/{u.alpha_vantage_daily_limit ?? "—"}
-                    </td>
-                    <td className="p-3">{u.role}</td>
-                    <td className="p-3">{u.is_suspended ? "Yes" : "No"}</td>
-                    <td className="p-3 text-right">
-                      <Link to={`/admin/users/${u.id}`} className="text-ink font-semibold hover:underline">
-                        Open
-                      </Link>
+                {data.users?.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="p-6 text-center text-muted">
+                      No users match these filters.
                     </td>
                   </tr>
-                ))}
+                ) : null}
+                {data.users?.map((u) => {
+                  const lastActive = formatWhen(u.last_active_at);
+                  return (
+                    <tr key={u.id} className="border-b border-ink/[0.06] hover:bg-ink/[0.02]">
+                      <td className="p-3 tabular-nums">{u.id}</td>
+                      <td className="p-3 font-medium">{u.email}</td>
+                      <td className="p-3 text-muted">{u.username || <span className="opacity-50">not set</span>}</td>
+                      <td className="p-3">{u.email_verified === false ? "No" : "Yes"}</td>
+                      <td className="p-3 text-muted whitespace-nowrap">
+                        {lastActive ?? <span className="opacity-50">Never</span>}
+                      </td>
+                      <td
+                        className="p-3 tabular-nums"
+                        title="Alpha Vantage market-data API requests used today / daily limit"
+                      >
+                        {u.alpha_vantage_requests_used_today ?? 0}/{u.alpha_vantage_daily_limit ?? "—"}
+                      </td>
+                      <td className="p-3">{u.role}</td>
+                      <td className="p-3">{u.is_suspended ? "Yes" : "No"}</td>
+                      <td className="p-3 text-right">
+                        <Link
+                          to={`/admin/users/${u.id}`}
+                          className="text-ink font-semibold hover:underline whitespace-nowrap"
+                        >
+                          Open →
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

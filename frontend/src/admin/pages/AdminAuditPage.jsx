@@ -7,6 +7,19 @@ function toIsoOrEmpty(v) {
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
+const ACTION_OPTIONS = [
+  { value: "", label: "Any action" },
+  { value: "SUSPEND_USER", label: "Suspend user" },
+  { value: "UNSUSPEND_USER", label: "Unsuspend user" },
+  { value: "RESET_BALANCE", label: "Reset balance" },
+  { value: "DELETE_USER", label: "Delete user" },
+  { value: "GRANT_ADMIN", label: "Grant admin" },
+  { value: "REVOKE_ADMIN", label: "Revoke admin" },
+  { value: "FORCE_LOGOUT", label: "Force logout" },
+  { value: "UPDATE_CONFIG", label: "Update config" },
+  { value: "EXPORT_REPORT", label: "Export report" },
+];
+
 export default function AdminAuditPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -70,7 +83,9 @@ export default function AdminAuditPage() {
     <div className="space-y-6">
       <div>
         <h1 className="cs-page-title">Audit log</h1>
-        <p className="cs-page-desc mt-1">Admin actions, newest first.</p>
+        <p className="cs-page-desc mt-1">
+          Every admin action is recorded here, newest first. Leave a filter blank to match anything.
+        </p>
       </div>
 
       <form onSubmit={applyFilters} className="cs-card p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-end">
@@ -80,16 +95,22 @@ export default function AdminAuditPage() {
             className="cs-input w-full mt-1 text-xs"
             value={draft.admin_id}
             onChange={(e) => setDraft((d) => ({ ...d, admin_id: e.target.value }))}
+            placeholder="any"
           />
         </div>
         <div>
           <label className="cs-label">Action</label>
-          <input
+          <select
             className="cs-input w-full mt-1 text-xs"
             value={draft.action}
             onChange={(e) => setDraft((d) => ({ ...d, action: e.target.value }))}
-            placeholder="SUSPEND_USER"
-          />
+          >
+            {ACTION_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="cs-label">Target user ID</label>
@@ -97,25 +118,28 @@ export default function AdminAuditPage() {
             className="cs-input w-full mt-1 text-xs"
             value={draft.target_user_id}
             onChange={(e) => setDraft((d) => ({ ...d, target_user_id: e.target.value }))}
+            placeholder="any"
           />
         </div>
         <div>
-          <label className="cs-label">From (local)</label>
+          <label className="cs-label">From</label>
           <input
             type="datetime-local"
             className="cs-input w-full mt-1 text-xs"
             value={draft.from_date}
             onChange={(e) => setDraft((d) => ({ ...d, from_date: e.target.value }))}
           />
+          <p className="text-[10px] text-muted mt-1">Local time. Leave empty for no lower bound.</p>
         </div>
         <div>
-          <label className="cs-label">To (local)</label>
+          <label className="cs-label">To</label>
           <input
             type="datetime-local"
             className="cs-input w-full mt-1 text-xs"
             value={draft.to_date}
             onChange={(e) => setDraft((d) => ({ ...d, to_date: e.target.value }))}
           />
+          <p className="text-[10px] text-muted mt-1">Local time. Leave empty for no upper bound.</p>
         </div>
         <button type="submit" className="cs-btn-buy text-xs">
           Apply filters
@@ -139,6 +163,13 @@ export default function AdminAuditPage() {
                 </tr>
               </thead>
               <tbody>
+                {data.entries?.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-muted">
+                      No audit entries match these filters.
+                    </td>
+                  </tr>
+                ) : null}
                 {data.entries?.map((row) => (
                   <tr key={row.id} className="border-b border-ink/[0.06] align-top">
                     <td className="p-2 whitespace-nowrap text-muted">

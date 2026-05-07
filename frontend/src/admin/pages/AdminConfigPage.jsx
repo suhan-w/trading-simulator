@@ -73,7 +73,8 @@ export default function AdminConfigPage() {
       <div>
         <h1 className="cs-page-title">Platform config</h1>
         <p className="cs-page-desc mt-1">
-          Key/value settings stored on the server.{!superUser ? " Only super admins can edit." : ""}
+          Server-side feature flags and tunables. Values are JSON.
+          {superUser ? " Edits are recorded in the audit log." : " Only super admins can edit."}
         </p>
       </div>
 
@@ -91,6 +92,13 @@ export default function AdminConfigPage() {
             </tr>
           </thead>
           <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={superUser ? 5 : 4} className="p-6 text-center text-muted">
+                  No platform config values are set. Defaults from the server code apply.
+                </td>
+              </tr>
+            ) : null}
             {rows.map((r) => (
               <tr key={r.key} className="border-b border-ink/[0.06] align-top">
                 <td className="p-3 font-mono font-medium">{r.key}</td>
