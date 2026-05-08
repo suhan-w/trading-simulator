@@ -11,6 +11,18 @@ from app.security import decode_token
 security = HTTPBearer(auto_error=False)
 
 
+def assert_token_version_matches_user(payload: dict, user: User) -> None:
+    """Reject JWTs issued before the user's token_version was bumped (force-logout)."""
+    token_tv = int(payload.get("tv", 0))
+    user_tv = int(getattr(user, "token_version", 0) or 0)
+    if token_tv != user_tv:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session invalidated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 def get_current_user(
     db: Session = Depends(get_db),
     creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
@@ -34,6 +46,12 @@ def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    assert_token_version_matches_user(payload, user)
+    if bool(getattr(user, "is_suspended", False)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account suspended",
+        )
     return user
 
 
@@ -66,13 +84,20 @@ def get_bearer_user_id(
         )
     db = SessionLocal()
     try:
-        exists = db.query(User.id).filter(User.id == user_id).first()
+        row = db.query(User.token_version).filter(User.id == user_id).first()
     finally:
         db.close()
-    if exists is None:
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+        )
+    db_tv = int(row[0] or 0)
+    if int(payload.get("tv", 0)) != db_tv:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session invalidated",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return user_id
 

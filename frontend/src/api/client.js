@@ -63,7 +63,22 @@ async function request(path, options = {}) {
     data = text;
   }
   if (!res.ok) {
-    let msg = data?.detail || data?.message || res.statusText;
+    let msg = data?.detail ?? data?.message ?? res.statusText;
+    if (Array.isArray(msg)) {
+      msg = msg
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item.msg === "string") return item.msg;
+          try {
+            return JSON.stringify(item);
+          } catch {
+            return String(item);
+          }
+        })
+        .join(" ");
+    } else if (msg && typeof msg === "object") {
+      msg = JSON.stringify(msg);
+    }
     if (res.status === 404 && String(path).startsWith("/api")) {
       msg =
         typeof msg === "string" && msg === "Not Found"
@@ -78,6 +93,8 @@ async function request(path, options = {}) {
 export const api = {
   guest: () => request("/api/auth/guest", { method: "POST" }),
   register: (body) => request("/api/auth/register", { method: "POST", body }),
+  verifyEmail: (body) => request("/api/auth/verify-email", { method: "POST", body }),
+  resendVerification: (body) => request("/api/auth/resend-verification", { method: "POST", body }),
   login: (body) => request("/api/auth/login", { method: "POST", body }),
   me: () => request("/api/auth/me"),
   updateAlphaVantageKey: (alpha_vantage_api_key) =>
@@ -152,7 +169,99 @@ export const api = {
   /** Creates paper row if needed (e.g. before first trade), then sets share_public. */
   patchPaperLeaderboardSharing: (body) =>
     request("/api/leaderboard/mine/paper-sharing", { method: "PATCH", body }),
+
+  /** Admin API (Bearer must be moderator or super_admin JWT). */
+  admin: {
+    stats: () => request("/api/admin/stats"),
+    users: (params = {}) => {
+      const q = new URLSearchParams();
+      if (params.page != null) q.set("page", String(params.page));
+      if (params.per_page != null) q.set("per_page", String(params.per_page));
+      if (params.search?.trim()) q.set("search", params.search.trim());
+      if (params.role?.trim()) q.set("role", params.role.trim());
+      if (params.is_suspended != null && params.is_suspended !== "")
+        q.set("is_suspended", String(params.is_suspended));
+      if (params.include_guests === true) q.set("include_guests", "true");
+      const qs = q.toString();
+      return request(`/api/admin/users${qs ? `?${qs}` : ""}`);
+    },
+    user: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`),
+    userTrades: (id, params = {}) => {
+      const q = new URLSearchParams();
+      if (params.limit != null) q.set("limit", String(params.limit));
+      if (params.offset != null) q.set("offset", String(params.offset));
+      const qs = q.toString();
+      return request(`/api/admin/users/${encodeURIComponent(id)}/trades${qs ? `?${qs}` : ""}`);
+    },
+    suspend: (id, reason) =>
+      request(`/api/admin/users/${encodeURIComponent(id)}/suspend`, { method: "POST", body: { reason } }),
+    unsuspend: (id) => request(`/api/admin/users/${encodeURIComponent(id)}/unsuspend`, { method: "POST" }),
+    resetBalance: (id, body) =>
+      request(`/api/admin/users/${encodeURIComponent(id)}/reset-balance`, { method: "POST", body }),
+    deleteUser: (id) => request(`/api/admin/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    forceLogout: (id) =>
+      request(`/api/admin/users/${encodeURIComponent(id)}/force-logout`, { method: "POST" }),
+    grantAdmin: (id, role) =>
+      request(`/api/admin/users/${encodeURIComponent(id)}/grant-admin`, { method: "POST", body: { role } }),
+    revokeAdmin: (id) =>
+      request(`/api/admin/users/${encodeURIComponent(id)}/revoke-admin`, { method: "POST" }),
+    auditLog: (params = {}) => {
+      const q = new URLSearchParams();
+      if (params.page != null) q.set("page", String(params.page));
+      if (params.per_page != null) q.set("per_page", String(params.per_page));
+      if (params.admin_id != null && params.admin_id !== "") q.set("admin_id", String(params.admin_id));
+      if (params.action?.trim()) q.set("action", params.action.trim());
+      if (params.target_user_id != null && params.target_user_id !== "")
+        q.set("target_user_id", String(params.target_user_id));
+      if (params.from_date?.trim()) q.set("from_date", params.from_date.trim());
+      if (params.to_date?.trim()) q.set("to_date", params.to_date.trim());
+      const qs = q.toString();
+      return request(`/api/admin/audit-log${qs ? `?${qs}` : ""}`);
+    },
+    configList: () => request("/api/admin/config"),
+    patchConfig: (key, body) =>
+      request(`/api/admin/config/${encodeURIComponent(key)}`, { method: "PATCH", body }),
+  },
 };
+
+/** Download binary admin export (CSV / PDF). */
+export async function downloadAdminExport(path, fallbackName) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const url = `${base}${path}`;
+  const res = await fetch(url, { headers });
+  if (res.status === 401 && getToken()) {
+    setToken(null);
+    window.dispatchEvent(new Event("auth:logout"));
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = text;
+    try {
+      const j = JSON.parse(text);
+      msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail ?? text);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(typeof msg === "string" ? msg : res.statusText);
+  }
+  const blob = await res.blob();
+  let filename = fallbackName || "download";
+  const cd = res.headers.get("Content-Disposition");
+  if (cd) {
+    const m = /filename="?([^";\n]+)"?/i.exec(cd);
+    if (m) filename = m[1].trim();
+  }
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
 
 /** After a market order, paper snapshot is refreshed in a background task; poll until the row exists. */
 export async function fetchPaperLeaderboardEntryIdWithRetry(maxAttempts = 12) {

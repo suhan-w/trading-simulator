@@ -7,6 +7,10 @@ dist/
 *.egg-info/
 .pytest_cache/
 .DS_Store
+.claude/
+
+# Ephemeral local bundle dumps (do not commit)
+frontend/.tmp_*.js
 
 # Local SQLite (dev without PostgreSQL)
 *.db
