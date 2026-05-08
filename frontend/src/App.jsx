@@ -8,6 +8,8 @@ import PerformanceReport from "./pages/PerformanceReport";
 import StrategyPage from "./pages/StrategyPage";
 import BacktestingPage from "./pages/BacktestingPage";
 import Account from "./pages/Account";
+import VerifyEmail from "./pages/VerifyEmail";
+import AdminApp from "./admin/AdminApp";
 
 function GuestGate({ error, onRetry }) {
   return (
@@ -44,6 +46,8 @@ function Protected({ children }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/admin/*" element={<AdminApp />} />
       <Route
         path="/"
         element={
