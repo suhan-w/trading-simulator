@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-
+import resend
 import httpx
 
 from app.config import settings
