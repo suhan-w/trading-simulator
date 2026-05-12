@@ -26,9 +26,9 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me-for-production}
       # development = signup codes may be logged if RESEND_API_KEY is unset; production = RESEND_API_KEY required
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_VXaC3GBk_GpahP6g3iWdnMPZebJBkQrEU}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:8080}
-      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-onboarding@resend.dev}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@cowrieshell.com.au}
       CORS_EXTRA_ORIGINS: ${CORS_EXTRA_ORIGINS:-}
     depends_on:
       db:
